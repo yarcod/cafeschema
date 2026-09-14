@@ -44,14 +44,33 @@ web-admin:
 schedule-build source contacts="data/f15_parent_mailing_list.csv" out="data/seed_sasong_26_27.xlsx":
     uv run python scripts/build_seed_xlsx.py {{source}} {{contacts}} {{out}}
 
+# Sync players and parents into a running local admin app from the contact list
+web-roster file="data/f15_parent_mailing_list.csv" team_id="1":
+    curl -s -F "team_id={{team_id}}" -F "file=@{{file}}" http://localhost:8081/admin/roster
+
 # Seed a running local admin app from a built seed file (team_id defaults to 1)
 web-seed file="data/seed_sasong_26_27.xlsx" team_id="1":
     curl -s -F "team_id={{team_id}}" -F "file=@{{file}}" http://localhost:8081/admin/import
+
+# Sync the deployed app's players and parents from the 360Player contact list
+# (additive — run this whenever a new parent registers, and before schedule-push)
+roster-push file="data/f15_parent_mailing_list.csv":
+    printf 'put %s /tmp/roster.csv\nput scripts/remote_roster_import.py /tmp/remote_roster_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_roster_import.py"
 
 # Import a built seed file into the deployed app (replaces every slot)
 schedule-push file="data/seed_sasong_26_27.xlsx":
     printf 'put %s /tmp/seed.xlsx\nput scripts/remote_import.py /tmp/remote_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_import.py"
+
+# One-off: move slot ownership from a single parent to the player (idempotent)
+migrate-push file="data/f15_parent_mailing_list.csv":
+    printf 'put %s /tmp/roster.csv\nput scripts/migrate_player_ownership.py /tmp/migrate_player_ownership.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/migrate_player_ownership.py"
+
+# Download the deployed database to rehearse a migration against a copy
+db-pull out="/tmp/duty-copy.db":
+    printf 'get /data/duty.db %s\n' "{{out}}" | fly ssh sftp shell -a duty-swap-webapp
 
 # Upload a document (pdf/png/jpg/txt/md) to the deployed app's Dokument page
 docs-push file:

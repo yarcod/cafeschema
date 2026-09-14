@@ -10,7 +10,8 @@ from ..clock import utcnow
 from ..dates import short_date_sv
 from ..models import Person, Slot, SwapRequest
 from ..notifications import send_swap_accepted, send_swap_declined, send_swap_proposed
-from ..schedule_queries import outgoing_swaps_for_person, swaps_pending_for_person
+from ..roster import notifiable_emails, parent_names_of_slot
+from ..schedule_queries import outgoing_swaps_for_parent, swaps_pending_for_parent
 from ..session_scope import get_session as _session
 from ..swaps import SwapError, accept_swap, decline_swap, propose_swap
 
@@ -34,6 +35,11 @@ def _format_slot(slot: Slot) -> str:
     return f"{short_date_sv(slot.date)} {slot.duty_name} {slot.start_time.strftime('%H:%M')}"
 
 
+def _player_name(slot: Slot) -> str | None:
+    """The player the slot belongs to, falling back to the schedule's spelling."""
+    return slot.player.name if slot.player is not None else slot.child_name
+
+
 @swap_bp.route("/byten")
 @login_required
 def byten():
@@ -42,22 +48,26 @@ def byten():
     incoming = [
         {
             "request": req,
-            "other_name": session.get(Slot, req.proposer_slot_id).person.name,
-            "other_child": session.get(Slot, req.proposer_slot_id).child_name,
+            "other_name": parent_names_of_slot(
+                session, session.get(Slot, req.proposer_slot_id)
+            ),
+            "other_child": _player_name(session.get(Slot, req.proposer_slot_id)),
             "you_give": _format_slot(session.get(Slot, req.target_slot_id)),
             "you_receive": _format_slot(session.get(Slot, req.proposer_slot_id)),
         }
-        for req in swaps_pending_for_person(session, person_id)
+        for req in swaps_pending_for_parent(session, person_id)
     ]
     outgoing = [
         {
             "request": req,
-            "other_name": session.get(Slot, req.target_slot_id).person.name,
-            "other_child": session.get(Slot, req.target_slot_id).child_name,
+            "other_name": parent_names_of_slot(
+                session, session.get(Slot, req.target_slot_id)
+            ),
+            "other_child": _player_name(session.get(Slot, req.target_slot_id)),
             "you_give": _format_slot(session.get(Slot, req.proposer_slot_id)),
             "you_receive": _format_slot(session.get(Slot, req.target_slot_id)),
         }
-        for req in outgoing_swaps_for_person(session, person_id)
+        for req in outgoing_swaps_for_parent(session, person_id)
     ]
     return render_template("byten.html", incoming=incoming, outgoing=outgoing)
 
@@ -68,6 +78,10 @@ def create():
     session = _session()
     proposer_slot_id = _required_int_form_field("proposer_slot_id")
     target_slot_ids = request.form.getlist("target_slot_ids")
+    # Either parent may propose on the family's behalf, so the mail names
+    # the one who actually clicked rather than the household.
+    proposer = session.get(Person, int(current_user.id))
+    proposer_name = proposer.name if proposer is not None else ""
 
     for raw_target_id in target_slot_ids:
         try:
@@ -87,10 +101,13 @@ def create():
 
         proposer_slot = session.get(Slot, proposer_slot_id)
         target_slot = session.get(Slot, target_slot_id)
-        if target_slot.person.email_notifications:
+        # The offer goes to the whole household that holds the target slot;
+        # whichever parent reads it first can answer for the family.
+        recipients = notifiable_emails(session, target_slot)
+        if recipients:
             send_swap_proposed(
-                target_slot.person.email,
-                proposer_name=proposer_slot.person.name,
+                recipients,
+                proposer_name=proposer_name,
                 proposer_slot=_format_slot(proposer_slot),
                 target_slot=_format_slot(target_slot),
                 link=url_for("swaps.byten", _external=True),
@@ -104,17 +121,15 @@ def create():
 def accept(swap_id: int):
     session = _session()
 
-    # accept_swap() swaps person_id on the proposer/target slot rows
-    # in place, so the original proposer's email and the accepter's name
-    # must be captured *before* calling it — reading them afterwards
-    # off the (now-swapped) rows would notify the wrong person.
+    # accept_swap() swaps player_id on the proposer/target slot rows
+    # in place, so the original proposer household's addresses and the
+    # accepter's name must be captured *before* calling it — reading them
+    # afterwards off the (now-swapped) rows would notify the wrong family.
     swap_request = session.get(SwapRequest, swap_id)
-    proposer_email = None
+    proposer_emails: list[str] = []
     if swap_request is not None:
         original_proposer_slot = session.get(Slot, swap_request.proposer_slot_id)
-        proposer = getattr(original_proposer_slot, "person", None)
-        if proposer is not None and proposer.email_notifications:
-            proposer_email = proposer.email
+        proposer_emails = notifiable_emails(session, original_proposer_slot)
     accepter = session.get(Person, int(current_user.id))
     accepter_name = accepter.name if accepter is not None else ""
 
@@ -126,13 +141,13 @@ def accept(swap_id: int):
         return str(exc), 400
     proposer_slot = session.get(Slot, request_row.proposer_slot_id)
     target_slot = session.get(Slot, request_row.target_slot_id)
-    if proposer_email is not None:
-        # proposer_slot's schedule fields are unaffected by the person_id
+    if proposer_emails:
+        # proposer_slot's schedule fields are unaffected by the player_id
         # swap above, so this row still describes what "you" (the
         # original proposer) gave up; target_slot describes what you
         # now have.
         send_swap_accepted(
-            proposer_email,
+            proposer_emails,
             accepter_name=accepter_name,
             your_old_slot=_format_slot(proposer_slot),
             your_new_slot=_format_slot(target_slot),
@@ -153,9 +168,10 @@ def decline(swap_id: int):
         return str(exc), 400
     proposer_slot = session.get(Slot, request_row.proposer_slot_id)
     decliner = session.get(Person, int(current_user.id))
-    if proposer_slot.person.email_notifications:
+    recipients = notifiable_emails(session, proposer_slot)
+    if recipients:
         send_swap_declined(
-            proposer_slot.person.email,
+            recipients,
             decliner_name=decliner.name if decliner is not None else "",
             your_slot=_format_slot(proposer_slot),
             link=url_for("schedule.mine", _external=True),

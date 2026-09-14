@@ -7,7 +7,22 @@ from itsdangerous import URLSafeTimedSerializer
 from duty_web.app import create_app
 from duty_web.config import AppConfig
 from duty_web.db import init_db, make_engine, make_session_factory
-from duty_web.models import Person, Slot, Team
+from duty_web.models import Person, Player, Slot, Team
+
+
+def make_family(session, team, player_name, parents):
+    """A player and the parents who may act for them.
+
+    Duties belong to the player, so a test that needs an owner needs a
+    family: (name, email) pairs, in the order the roster lists them.
+    """
+    player = Player(name=player_name, team_id=team.id)
+    people = [Person(name=name, email=email) for name, email in parents]
+    player.parents = people
+    session.add(player)
+    session.add_all(people)
+    session.flush()
+    return player
 
 
 @pytest.fixture
@@ -36,22 +51,30 @@ def client(app):
 
 @pytest.fixture
 def seeded(session_factory):
-    """A team, a logged-in-able person, and two of their slots.
+    """A team, a player with two parents, and two of the player's slots.
 
     The 'slot' is a historical slot (Jan 16, 2026) for team-calendar tests.
     The 'future_slot' is always 30 days in the future for personal view tests.
+    'person' is the first parent; 'other_parent' is the second, and must see
+    exactly the same slots.
     """
     session = session_factory()
     team = Team(name="F14 Blå", venue="Wallenstam arena")
-    person = Person(name="Alva Exempel", email="tova@exempel.se")
-    session.add_all([team, person])
+    session.add(team)
     session.flush()
-    from datetime import date, time, timedelta
+    player = make_family(
+        session,
+        team,
+        "Tova Exempel",
+        [("Alva Exempel", "tova@exempel.se"), ("Björn Exempel", "bjorn@exempel.se")],
+    )
+    person, other_parent = player.parents
+    from datetime import date, time
 
     slot = Slot(
         team_id=team.id, date=date(2026, 1, 16), start_time=time(18, 0),
         end_time=time(21, 0), station="Cafe", duty_name="Arena värdskap",
-        venue="Wallenstam arena", person_id=person.id,
+        venue="Wallenstam arena", child_name=player.name, player_id=player.id,
     )
     # Compute the next 16th of any month (ensures test assertion "16" in response works forever)
     today = date.today()
@@ -67,11 +90,18 @@ def seeded(session_factory):
     future_slot = Slot(
         team_id=team.id, date=future_slot_date, start_time=time(18, 0),
         end_time=time(21, 0), station="Cafe", duty_name="Arena värdskap",
-        venue="Wallenstam arena", person_id=person.id,
+        venue="Wallenstam arena", child_name=player.name, player_id=player.id,
     )
     session.add_all([slot, future_slot])
     session.commit()
-    return {"team": team, "person": person, "slot": slot, "future_slot": future_slot}
+    return {
+        "team": team,
+        "player": player,
+        "person": person,
+        "other_parent": other_parent,
+        "slot": slot,
+        "future_slot": future_slot,
+    }
 
 
 @pytest.fixture

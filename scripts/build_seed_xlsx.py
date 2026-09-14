@@ -1,20 +1,21 @@
 """Build a duty_web-seedable xlsx from a trainer's roster + parent contacts.
 
 The trainer's schedule (`Säsong 26-27` sheet) lists one row per shift, with
-up to three *players* staffing it, but duty_web needs one parent e-post per
-slot so that a Person can log in. This script joins the two and flattens
-each shift into one row per staffing player, using the policy agreed with
-the team lead:
+up to three *players* staffing it. This script flattens each shift into one
+row per staffing player, which is all duty_web needs: a slot belongs to the
+player, and who may act on it follows from the roster import's
+player->parents links, not from anything in this file.
 
-- Household with two parents on file -> first parent listed in the
-  mailing-list CSV (arbitrary but simple; wrong-parent cases can swap or
-  forward the login link once live).
-- Player name not found under any spelling -> row is kept with no e-post;
-  duty_web's importer leaves such a slot unassigned rather than dropping
-  it (Slot.person_id is nullable for exactly this case).
+- Player name not found under any spelling -> the row is still written,
+  and the name is reported below so it can be added to name_fixes.json or
+  to the contact list. duty_web's importer leaves such a slot unassigned
+  rather than dropping it (Slot.player_id is nullable for this case).
 - Shift with no date fixed yet ("Datum ej satt (VT27)") -> row is kept
   with a blank date; duty_web shows these under "Datum ej satt" instead of
   on the calendar, so a parent still sees what they're signed up for.
+
+The contact list is passed in only to check the spellings against it — no
+parent name or e-post is written to the seed file.
 
 Spelningar som skiljer sig mellan schemat och kontaktlistan rättas via
 data/name_fixes.json (se load_name_fixes) — den filen innehåller
@@ -60,7 +61,7 @@ ARENA_VENUE = "Wallenstam arena"
 
 SEED_HEADER = [
     "ar", "syssla", "arena", "station", "vecka", "datum", "veckodag",
-    "tid", "namn", "epost", "barn", "anteckning",
+    "tid", "barn", "anteckning",
 ]
 
 WEEKDAYS_SV = (
@@ -119,21 +120,13 @@ def normalize_time_range(raw: object) -> str:
     return "-".join(normalized)
 
 
-def load_parents_by_player(csv_path: Path) -> dict[str, list[tuple[str, str]]]:
-    """Player name (normalized) -> parents in file order (first = primary)."""
-    parents: dict[str, list[tuple[str, str]]] = {}
+def load_roster_players(csv_path: Path) -> set[str]:
+    """The normalized player names duty_web will have after a roster import."""
     with csv_path.open(encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            player = _norm(row["children_on_team"])
-            parents.setdefault(player, []).append(
-                (row["parent_name"].strip(), row["parent_email"].strip())
-            )
-    return parents
+        return {_norm(row["children_on_team"]) for row in csv.DictReader(f)}
 
 
-def build_rows(
-    schedule_path: Path, parents_by_player: dict[str, list[tuple[str, str]]]
-) -> list[list]:
+def build_rows(schedule_path: Path, roster_players: set[str]) -> list[list]:
     name_fixes = load_name_fixes()
     workbook = load_workbook(schedule_path, read_only=True, data_only=True)
     try:
@@ -181,11 +174,7 @@ def build_rows(
             player = " ".join(str(raw_player).split())
             player = name_fixes.get(player, player)
 
-            matches = parents_by_player.get(_norm(player), [])
-            if matches:
-                namn, epost = matches[0]
-            else:
-                namn, epost = player, ""
+            if _norm(player) not in roster_players:
                 unmatched.append(player)
             note = shift_weekday
 
@@ -198,15 +187,14 @@ def build_rows(
                 datum,
                 veckodag,
                 tid,
-                namn,
-                epost,
                 player,
                 note,
             ])
 
     if unmatched:
         print(
-            f"Varning: {len(unmatched)} pass utan matchad kontakt, importeras otilldelade: "
+            f"Varning: {len(unmatched)} pass vars spelare saknas i laglistan, "
+            "importeras otilldelade: "
             + ", ".join(sorted(set(unmatched))),
             file=sys.stderr,
         )
@@ -229,8 +217,8 @@ def main(argv: list[str]) -> int:
         return 1
     schedule_path, contacts_path, out_path = (Path(a) for a in argv[1:])
 
-    parents_by_player = load_parents_by_player(contacts_path)
-    rows = build_rows(schedule_path, parents_by_player)
+    roster_players = load_roster_players(contacts_path)
+    rows = build_rows(schedule_path, roster_players)
     write_seed_xlsx(rows, out_path)
     print(f"Skrev {len(rows)} pass till {out_path}")
     return 0

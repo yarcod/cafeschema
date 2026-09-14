@@ -1,4 +1,9 @@
-"""Read queries shared by the schedule routes and /api/schedule."""
+"""Read queries shared by the schedule routes and /api/schedule.
+
+Slots belong to a player, so every parent-scoped query here resolves the
+parent's players first and filters on those — either parent of a child sees
+and acts on exactly the same rows.
+"""
 
 from __future__ import annotations
 
@@ -8,22 +13,29 @@ from sqlalchemy import extract
 from sqlalchemy.orm import Session
 
 from .models import Slot, SwapRequest
+from .roster import player_ids_for_parent
 
 
-def slots_for_person(
+def slots_for_parent(
     session: Session, person_id: int, *, on_or_after: date | None = None
 ) -> list[Slot]:
-    query = session.query(Slot).filter(Slot.person_id == person_id)
+    player_ids = player_ids_for_parent(session, person_id)
+    if not player_ids:
+        return []
+    query = session.query(Slot).filter(Slot.player_id.in_(player_ids))
     if on_or_after is not None:
         query = query.filter(Slot.date >= on_or_after)
     return query.order_by(Slot.date).all()
 
 
-def undated_slots_for_person(session: Session, person_id: int) -> list[Slot]:
-    """A person's duties that exist but have no date fixed yet."""
+def undated_slots_for_parent(session: Session, person_id: int) -> list[Slot]:
+    """A parent's duties that exist but have no date fixed yet."""
+    player_ids = player_ids_for_parent(session, person_id)
+    if not player_ids:
+        return []
     return (
         session.query(Slot)
-        .filter(Slot.person_id == person_id, Slot.date.is_(None))
+        .filter(Slot.player_id.in_(player_ids), Slot.date.is_(None))
         .order_by(Slot.duty_name)
         .all()
     )
@@ -57,18 +69,16 @@ def slots_for_team_month(
 def swappable_slots_for(
     session: Session, team_id: int, person_id: int, *, on_or_after: date
 ) -> list[Slot]:
-    """Other people's filled, upcoming slots a person could propose to swap for."""
-    return (
-        session.query(Slot)
-        .filter(
-            Slot.team_id == team_id,
-            Slot.date >= on_or_after,
-            Slot.person_id.isnot(None),
-            Slot.person_id != person_id,
-        )
-        .order_by(Slot.date)
-        .all()
+    """Other families' filled, upcoming slots a parent could propose to swap for."""
+    query = session.query(Slot).filter(
+        Slot.team_id == team_id,
+        Slot.date >= on_or_after,
+        Slot.player_id.isnot(None),
     )
+    player_ids = player_ids_for_parent(session, person_id)
+    if player_ids:
+        query = query.filter(Slot.player_id.notin_(player_ids))
+    return query.order_by(Slot.date).all()
 
 
 def _same_shift(a: Slot, b: Slot) -> bool:
@@ -99,43 +109,42 @@ def shift_mates_for(session: Session, slot: Slot) -> list[Slot]:
 
 
 def swap_candidates_for_slot(slot: Slot, candidates: list[Slot]) -> list[Slot]:
-    """Candidates minus anyone already rostered on this slot's own shift.
+    """Candidates minus any family already rostered on this slot's own shift.
 
     Swapping with someone standing beside you on the same shift would just
-    put them on it twice, so they are never a valid trade.
+    put their family on it twice, so they are never a valid trade — and the
+    family is the unit, since either of a player's parents may show up.
     """
     on_this_shift = {
-        other.person_id for other in candidates if _same_shift(slot, other)
+        other.player_id for other in candidates if _same_shift(slot, other)
     }
     return [
         candidate
         for candidate in candidates
-        if candidate.person_id not in on_this_shift
+        if candidate.player_id not in on_this_shift
     ]
 
 
-def outgoing_swaps_for_person(session: Session, person_id: int) -> list[SwapRequest]:
-    """Pending swap requests proposed from a slot the given person currently owns."""
+def _swaps_on_parents_slots(
+    session: Session, person_id: int, slot_side
+) -> list[SwapRequest]:
+    player_ids = player_ids_for_parent(session, person_id)
+    if not player_ids:
+        return []
     return (
         session.query(SwapRequest)
-        .join(Slot, SwapRequest.proposer_slot_id == Slot.id)
-        .filter(SwapRequest.status == "pending", Slot.person_id == person_id)
+        .join(Slot, slot_side == Slot.id)
+        .filter(SwapRequest.status == "pending", Slot.player_id.in_(player_ids))
         .order_by(SwapRequest.created_at)
         .all()
     )
 
 
-def swaps_pending_for_person(session: Session, person_id: int) -> list[SwapRequest]:
-    """Pending swap requests targeting a slot the given person currently owns.
+def outgoing_swaps_for_parent(session: Session, person_id: int) -> list[SwapRequest]:
+    """Pending swaps proposed from a slot this parent's family currently owns."""
+    return _swaps_on_parents_slots(session, person_id, SwapRequest.proposer_slot_id)
 
-    There is no route or template rendering this yet (deferred to the
-    frontend pass), but the query exists so a future "incoming swap
-    requests" view isn't blocked on writing it from scratch.
-    """
-    return (
-        session.query(SwapRequest)
-        .join(Slot, SwapRequest.target_slot_id == Slot.id)
-        .filter(SwapRequest.status == "pending", Slot.person_id == person_id)
-        .order_by(SwapRequest.created_at)
-        .all()
-    )
+
+def swaps_pending_for_parent(session: Session, person_id: int) -> list[SwapRequest]:
+    """Pending swaps targeting a slot this parent's family currently owns."""
+    return _swaps_on_parents_slots(session, person_id, SwapRequest.target_slot_id)

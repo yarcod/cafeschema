@@ -8,14 +8,15 @@ from datetime import date
 from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
-from ..models import Slot, Team
+from ..models import Player, Slot, Team
+from ..roster import player_ids_for_parent
 from ..schedule_queries import (
     shift_mates_for,
-    slots_for_person,
+    slots_for_parent,
     slots_for_team_month,
     swap_candidates_for_slot,
     swappable_slots_for,
-    undated_slots_for_person,
+    undated_slots_for_parent,
     undated_slots_for_team,
 )
 from ..session_scope import get_session as _session
@@ -26,13 +27,16 @@ schedule_bp = Blueprint("schedule", __name__)
 def _team_id_for(session, person) -> int:
     """v1 has exactly one team, so every slot's team_id is the same value.
 
-    Looked up from any slot the person holds rather than hard-coded, so the
+    Looked up from the parent's own player rather than hard-coded, so the
     single-team assumption lives in one place ready to widen later (see the
-    spec's multi-team forward-compatibility note).
+    spec's multi-team forward-compatibility note). Reading it off the player
+    rather than off a slot also works for a family with no duties this term.
     """
-    slot = session.query(Slot).filter(Slot.person_id == person.id).first()
-    if slot is not None:
-        return slot.team_id
+    player_ids = player_ids_for_parent(session, person.id)
+    if player_ids:
+        player = session.get(Player, min(player_ids))
+        if player is not None:
+            return player.team_id
     return session.query(Team).first().id
 
 
@@ -41,8 +45,8 @@ def _team_id_for(session, person) -> int:
 def mine():
     session = _session()
     today = date.today()
-    slots = slots_for_person(session, int(current_user.id), on_or_after=today)
-    undated_slots = undated_slots_for_person(session, int(current_user.id))
+    slots = slots_for_parent(session, int(current_user.id), on_or_after=today)
+    undated_slots = undated_slots_for_parent(session, int(current_user.id))
     team_id = _team_id_for(session, current_user.person)
     candidates = swappable_slots_for(session, team_id, int(current_user.id), on_or_after=today)
 
@@ -161,10 +165,13 @@ def api_schedule():
     session = _session()
     slots = (
         session.query(Slot)
-        .filter(Slot.person_id.isnot(None), Slot.date.isnot(None))
+        .filter(Slot.player_id.isnot(None), Slot.date.isnot(None))
         .order_by(Slot.date)
         .all()
     )
+    # A duty belongs to the player, and either parent may turn up for it, so
+    # every parent on file is a reminder recipient — the mailer filters them
+    # on email_notifications individually.
     return jsonify([
         {
             "date": slot.date.isoformat(),
@@ -174,12 +181,16 @@ def api_schedule():
             "duty_name": slot.duty_name,
             "venue": slot.venue,
             "note": slot.note,
-            "child_name": slot.child_name,
-            "person": {
-                "name": slot.person.name,
-                "email": slot.person.email,
-                "email_notifications": slot.person.email_notifications,
-            },
+            "child_name": slot.player.name,
+            "player": {"name": slot.player.name},
+            "parents": [
+                {
+                    "name": parent.name,
+                    "email": parent.email,
+                    "email_notifications": parent.email_notifications,
+                }
+                for parent in slot.player.parents
+            ],
         }
         for slot in slots
     ])

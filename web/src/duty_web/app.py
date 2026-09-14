@@ -15,7 +15,7 @@ from .config import AppConfig
 from .db import init_db, make_engine, make_session_factory
 from .dates import MONTHS_SV, long_date_sv, short_date_sv, weekday_sv
 from .models import Person
-from .schedule_queries import swaps_pending_for_person
+from .schedule_queries import swaps_pending_for_parent
 from .session_scope import close_session, get_session
 
 
@@ -124,7 +124,7 @@ def create_app(config: AppConfig) -> Flask:
         session = get_session()
         return {
             "pending_swap_count": len(
-                swaps_pending_for_person(session, int(current_user.id))
+                swaps_pending_for_parent(session, int(current_user.id))
             )
         }
 

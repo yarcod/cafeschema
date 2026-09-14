@@ -5,8 +5,10 @@ from datetime import date, time
 import pytest
 
 from duty_web.clock import utcnow
-from duty_web.models import Person, Slot
+from duty_web.models import Slot
 from duty_web.swaps import propose_swap
+
+from .conftest import make_family
 
 
 def _login(client, person_id):
@@ -19,13 +21,15 @@ def _login(client, person_id):
 def pending(session_factory, seeded):
     """Tova proposes her slot in exchange for Bo's."""
     session = session_factory()
-    bo = Person(name="Bo Bengtsson", email="bo@exempel.se")
-    session.add(bo)
-    session.flush()
+    bea = make_family(
+        session, seeded["team"], "Bea Bengtsson",
+        [("Bo Bengtsson", "bo@exempel.se")],
+    )
+    bo = bea.parents[0]
     theirs = Slot(
         team_id=seeded["team"].id, date=date(2026, 12, 5), start_time=time(9, 0),
         end_time=time(12, 0), station="", duty_name="Bästkustcupen", venue="",
-        person_id=bo.id, child_name="Bea Bengtsson",
+        player_id=bea.id, child_name="Bea Bengtsson",
     )
     session.add(theirs)
     session.commit()
@@ -97,3 +101,15 @@ def test_no_badge_when_nothing_is_waiting(client, pending, seeded):
     body = client.get("/").get_data(as_text=True)
 
     assert 'class="tab-badge"' not in body
+
+
+def test_the_other_parent_sees_the_same_waiting_request(client, pending, seeded):
+    """The proposal was made by one parent; both are answerable for it."""
+    _login(client, seeded["person"].id)
+    first = client.get("/byten").get_data(as_text=True)
+
+    _login(client, seeded["other_parent"].id)
+    second = client.get("/byten").get_data(as_text=True)
+
+    assert "Väntar på svar" in second
+    assert first == second

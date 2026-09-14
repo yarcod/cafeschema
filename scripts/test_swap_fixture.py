@@ -20,7 +20,7 @@ import sys
 from datetime import date, time
 
 from duty_web.db import init_db, make_engine, make_session_factory
-from duty_web.models import Person, Slot, SwapRequest, Team
+from duty_web.models import Person, Player, Slot, SwapRequest, Team
 
 DB_PATH = "/data/duty.db"
 
@@ -40,6 +40,17 @@ def add(session, team: Team, email: str) -> None:
     else:
         print(f"Testförälder {email} fanns redan (id {person.id})")
 
+    # The slot belongs to a player, so the fixture needs one of those too —
+    # it is what makes the test parent able to act on the pass at all.
+    player = session.query(Player).filter_by(name=TEST_CHILD).one_or_none()
+    if player is None:
+        player = Player(name=TEST_CHILD, team_id=team.id)
+        session.add(player)
+        session.flush()
+        print(f"Skapade testspelare {TEST_CHILD} (id {player.id})")
+    if person not in player.parents:
+        player.parents.append(person)
+
     existing = session.query(Slot).filter_by(duty_name=TEST_DUTY).count()
     if existing:
         print(f"{existing} testpass fanns redan — hoppar över")
@@ -49,7 +60,7 @@ def add(session, team: Team, email: str) -> None:
         team_id=team.id, date=TEST_DATE, start_time=time(10, 0), end_time=time(12, 0),
         station="", duty_name=TEST_DUTY, venue="Wallenstam arena",
         note="Testpass — går att ta bort när bytesflödet är verifierat",
-        child_name=TEST_CHILD, person_id=person.id,
+        child_name=TEST_CHILD, player_id=player.id,
     ))
     print(f"Skapade testpass {TEST_DATE} 10:00-12:00 för {email}")
 
@@ -76,14 +87,26 @@ def remove(session, team: Team, email: str) -> None:
         session.delete(slot)
     print(f"Tog bort {len(slots)} testpass")
 
+    player = session.query(Player).filter_by(name=TEST_CHILD).one_or_none()
+
     person = session.query(Person).filter_by(email=email).one_or_none()
     if person is not None:
-        remaining = session.query(Slot).filter_by(person_id=person.id).count()
-        if remaining:
-            print(f"Behåller {email} — har {remaining} riktiga pass kvar")
+        other_players = [p for p in person.players if p is not player]
+        if other_players:
+            print(f"Behåller {email} — hör till {len(other_players)} riktiga spelare")
         else:
+            person.players.clear()
             session.delete(person)
             print(f"Tog bort testföräldern {email}")
+
+    if player is not None:
+        remaining = session.query(Slot).filter_by(player_id=player.id).count()
+        if remaining:
+            print(f"Behåller testspelaren — har {remaining} pass kvar")
+        else:
+            player.parents.clear()
+            session.delete(player)
+            print(f"Tog bort testspelaren {TEST_CHILD}")
 
 
 def main() -> int:

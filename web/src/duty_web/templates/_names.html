@@ -4,8 +4,24 @@
 <span class="nm"><span class="nm-parent">{{ parent }}</span><span class="nm-child">{{ child or parent }}</span></span>
 {%- endmacro %}
 
+{# A slot belongs to the player, and either parent may staff it, so the
+   parent side lists both of them. #}
+{% macro slot_parents(slot) -%}
+{%- if slot.player and slot.player.parents -%}
+{{ slot.player.parents | map(attribute="name") | join(" & ") }}
+{%- elif slot.player -%}
+{{ slot.player.name }}
+{%- else -%}
+Ledigt
+{%- endif -%}
+{%- endmacro %}
+
+{% macro slot_player(slot) -%}
+{{ slot.player.name if slot.player else (slot.child_name or "Ledigt") }}
+{%- endmacro %}
+
 {% macro slot_person(slot) -%}
-{{ person_name(slot.person.name if slot.person else "Ledigt", slot.child_name) }}
+{{ person_name(slot_parents(slot), slot_player(slot)) }}
 {%- endmacro %}
 
 {% macro names_toggle() -%}

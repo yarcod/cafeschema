@@ -126,7 +126,7 @@ def test_verify_refuses_to_log_in_an_email_with_no_existing_person(client, sessi
     response = client.get(f"/login/verify?token={token}")
 
     assert response.status_code == 200
-    assert "finns inte i schemat" in response.get_data(as_text=True)
+    assert "finns inte i laglistan" in response.get_data(as_text=True)
     assert session.query(Person).filter_by(email="ny@exempel.se").count() == 0
     with client.session_transaction() as sess:
         assert "_user_id" not in sess

@@ -41,7 +41,7 @@ def test_mine_lists_slots_whose_date_is_not_set_yet(client, seeded, session_fact
     session.add(Slot(
         team_id=seeded["team"].id, date=None, start_time=time(18, 0),
         end_time=time(21, 0), station="", duty_name="Arena värdskap vinter",
-        venue="Wallenstam arena", person_id=seeded["person"].id,
+        venue="Wallenstam arena", player_id=seeded["player"].id,
     ))
     session.commit()
     _login(client, seeded["person"])
@@ -61,7 +61,7 @@ def test_team_lists_slots_whose_date_is_not_set_yet(client, seeded, session_fact
     session.add(Slot(
         team_id=seeded["team"].id, date=None, start_time=time(18, 0),
         end_time=time(21, 0), station="", duty_name="Arena värdskap vinter",
-        venue="Wallenstam arena", person_id=seeded["person"].id,
+        venue="Wallenstam arena", player_id=seeded["player"].id,
     ))
     session.commit()
     _login(client, seeded["person"])

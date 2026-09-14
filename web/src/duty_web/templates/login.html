@@ -3,7 +3,8 @@
 {% block content %}
 <div class="login-body">
   <h2>Välkommen</h2>
-  <p class="sub">Inget lösenord behövs. Ange din e-postadress så mailar vi en inloggningslänk, om adressen finns i schemat.</p>
+  <p class="sub">Inget lösenord behövs. Ange din e-postadress så mailar vi en inloggningslänk, om adressen finns i laglistan.</p>
+  <p class="sub">Använd <strong>samma adress som du registrerade i 360Player</strong> — det är den vi hämtar laglistan från.</p>
 
   <form method="post" action="{{ url_for('auth.login') }}" class="field">
     <label class="field-label" for="email">E-postadress</label>
@@ -15,7 +16,7 @@
   <div class="magic-sent">
     <div class="headline">Länk skickad ✓</div>
     <div class="detail">
-      Om <strong>{{ sent_to }}</strong> finns i schemat har vi mailat en inloggningslänk dit.
+      Om <strong>{{ sent_to }}</strong> finns i laglistan har vi mailat en inloggningslänk dit.
       Den är giltig i 20 minuter och kan bara användas en gång.
     </div>
   </div>

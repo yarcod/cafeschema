@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from duty_web.db import init_db, make_engine, make_session_factory
-from duty_web.models import Person, Slot, SwapRequest, Team
+from duty_web.models import Person, Player, Slot, SwapRequest, Team
 
 
 def make_session():
@@ -13,12 +13,22 @@ def make_session():
     return make_session_factory(engine)()
 
 
-def test_slot_links_team_and_person():
+def _player(session, team, name, *parent_emails):
+    player = Player(name=name, team_id=team.id)
+    player.parents = [
+        Person(name=email.split("@")[0], email=email) for email in parent_emails
+    ]
+    session.add(player)
+    session.flush()
+    return player
+
+
+def test_slot_links_team_and_player():
     session = make_session()
     team = Team(name="F14 Blå", venue="Wallenstam arena")
-    person = Person(name="Alva Exempel", email="tova@exempel.se")
-    session.add_all([team, person])
+    session.add(team)
     session.flush()
+    player = _player(session, team, "Tova Exempel", "tova@exempel.se")
 
     slot = Slot(
         team_id=team.id,
@@ -29,14 +39,15 @@ def test_slot_links_team_and_person():
         duty_name="Arena värdskap",
         venue="Wallenstam arena",
         note="Hämta nyckel helgen innan",
-        person_id=person.id,
+        player_id=player.id,
     )
     session.add(slot)
     session.commit()
 
     fetched = session.get(Slot, slot.id)
     assert fetched.team.name == "F14 Blå"
-    assert fetched.person.email == "tova@exempel.se"
+    assert fetched.player.name == "Tova Exempel"
+    assert [p.email for p in fetched.player.parents] == ["tova@exempel.se"]
 
 
 def test_slot_can_be_unfilled():
@@ -53,12 +64,12 @@ def test_slot_can_be_unfilled():
         station="Cafe",
         duty_name="Arena värdskap",
         venue="Wallenstam arena",
-        person_id=None,
+        player_id=None,
     )
     session.add(slot)
     session.commit()
 
-    assert session.get(Slot, slot.id).person is None
+    assert session.get(Slot, slot.id).player is None
 
 
 def test_foreign_keys_are_enforced_on_sqlite(tmp_path):
@@ -90,20 +101,20 @@ def test_foreign_keys_are_enforced_on_sqlite(tmp_path):
 def test_swap_request_defaults_to_pending():
     session = make_session()
     team = Team(name="F14 Blå", venue="Wallenstam arena")
-    a = Person(name="A", email="a@exempel.se")
-    b = Person(name="B", email="b@exempel.se")
-    session.add_all([team, a, b])
+    session.add(team)
     session.flush()
+    a = _player(session, team, "Klara", "a@exempel.se")
+    b = _player(session, team, "Moa", "b@exempel.se")
 
     slot_a = Slot(
         team_id=team.id, date=date(2026, 1, 16), start_time=time(18, 0),
         end_time=time(21, 0), station="Cafe", duty_name="Arena värdskap",
-        venue="Wallenstam arena", person_id=a.id,
+        venue="Wallenstam arena", player_id=a.id,
     )
     slot_b = Slot(
         team_id=team.id, date=date(2026, 1, 23), start_time=time(17, 30),
         end_time=time(20, 30), station="Entré", duty_name="Arena värdskap",
-        venue="Wallenstam arena", person_id=b.id,
+        venue="Wallenstam arena", player_id=b.id,
     )
     session.add_all([slot_a, slot_b])
     session.flush()

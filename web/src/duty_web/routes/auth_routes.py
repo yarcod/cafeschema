@@ -81,7 +81,7 @@ def verify():
         # authenticated session and, via /team's fallback to the first Team,
         # read the whole roster and season calendar.
         return render_template(
-            "login.html", error="Den adressen finns inte i schemat."
+            "login.html", error="Den adressen finns inte i laglistan."
         )
 
     from ..app import LoginUser

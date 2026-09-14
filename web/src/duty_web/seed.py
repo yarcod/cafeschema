@@ -1,7 +1,13 @@
-"""One-time xlsx -> database import. Wipes and reimports Person/Slot.
+"""Schedule xlsx -> database import. Replaces every slot, keeps the roster.
 
-Safe only because it always runs before any parent has logged in (design
-spec: Seeding the database) — there is never live swap state to preserve.
+Slots are derived data: the trainer's spreadsheet is their only source, so
+re-importing it wholesale is how a corrected schedule gets in. Players,
+parents and the links between them are *not* touched here — they come from
+the roster import (roster.py), which is authoritative and additive, so a
+re-import never disturbs a logged-in parent or a pending swap's owners.
+
+A slot names its player in the 'barn' column; who may act on it follows
+from that player's parents.
 """
 
 from __future__ import annotations
@@ -10,17 +16,17 @@ from datetime import datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .models import Person, Slot, Team
+from .models import Player, Slot, Team
+from .roster import normalize_name
 
 
 class SeedError(Exception):
     """Raised when the xlsx cannot be imported. Message is operator-facing."""
 
 
-def _parse_time_range(raw: str, *, row_number: int) -> tuple[str, str]:
+def _parse_time_range(raw: object, *, row_number: int) -> tuple[str, str]:
     parts = str(raw).split("-")
     if len(parts) != 2:
         raise SeedError(f"Rad {row_number}: ogiltigt tidsintervall '{raw}'")
@@ -57,48 +63,40 @@ def import_schedule(session: Session, path: str | Path, *, team_id: int) -> int:
     # Nothing else creates a Team row, and SQLite's default connection
     # settings don't enforce foreign keys, so importing against a team_id
     # that doesn't exist would otherwise silently write slots with a
-    # dangling team_id. Fail loudly, and before wiping the existing
-    # Slot/Person data below, rather than after.
+    # dangling team_id. Fail loudly, and before wiping the existing slots
+    # below, rather than after.
     if session.get(Team, team_id) is None:
         raise SeedError(
             f"Ingen grupp med team_id={team_id} finns. Skapa gruppen innan import."
         )
 
+    # Every slot's owner is resolved through this map, so an empty roster
+    # would import the whole season unassigned and nobody could log in to
+    # anything. That is always an operator mistake, not a real schedule.
+    players_by_name = {
+        normalize_name(player.name): player
+        for player in session.query(Player).filter(Player.team_id == team_id).all()
+    }
+    if not players_by_name:
+        raise SeedError(
+            "Inga spelare finns i gruppen. Importera laglistan (roster) före schemat."
+        )
+
     session.query(Slot).delete()
     session.flush()
 
-    # Slots are replaced wholesale, but Person rows are matched by e-post
-    # and kept: a logged-in session stores the person's id, and SQLite
-    # hands out the ids of deleted rows again, so recreating people would
-    # silently point an existing session at a different parent. People who
-    # drop out of the schedule keep their (now slot-less) row for the same
-    # reason.
-    people_by_email: dict[str, Person] = {
-        person.email: person for person in session.query(Person).all()
-    }
     count = 0
     try:
         for row_number, record in enumerate(records, start=2):
-            email = str(record.get("epost") or "").strip().lower()
-            name = str(record.get("namn") or "").strip()
-            if not name:
-                raise SeedError(f"Rad {row_number}: saknar namn")
+            player_name = " ".join(str(record.get("barn") or "").split())
+            if not player_name:
+                raise SeedError(f"Rad {row_number}: saknar barn")
 
-            # A row can be missing an e-post when the person isn't in the
-            # contact roster yet — the slot is still real and shouldn't be
-            # dropped, it's just unfilled (Slot.person_id is nullable for
-            # exactly this reason). Keep the intended name visible via note
-            # rather than silently losing who it was meant for.
-            person = None
-            if email:
-                person = people_by_email.get(email)
-                if person is None:
-                    person = Person(name=name, email=email)
-                    session.add(person)
-                    session.flush()
-                    people_by_email[email] = person
-                elif person.name != name:
-                    person.name = name
+            # A player who isn't on the roster yet still has a real shift —
+            # it's just one nobody can act on until the roster catches up
+            # (Slot.player_id is nullable for exactly this reason). Keep the
+            # intended name visible via note rather than silently losing it.
+            player = players_by_name.get(normalize_name(player_name))
 
             raw_date = record.get("datum")
             raw_date_str = "" if raw_date is None else str(raw_date).strip()
@@ -114,7 +112,9 @@ def import_schedule(session: Session, path: str | Path, *, team_id: int) -> int:
                 except ValueError:
                     raise SeedError(f"Rad {row_number}: ogiltigt datum '{raw_date}'")
 
-            start_str, end_str = _parse_time_range(record.get("tid", ""), row_number=row_number)
+            start_str, end_str = _parse_time_range(
+                record.get("tid", ""), row_number=row_number
+            )
 
             try:
                 start_time = datetime.strptime(start_str, "%H:%M").time()
@@ -128,8 +128,8 @@ def import_schedule(session: Session, path: str | Path, *, team_id: int) -> int:
 
             anteckning = record.get("anteckning")
             note = (str(anteckning).strip() or None) if anteckning else None
-            if person is None:
-                unfilled_note = f"Ej matchad kontakt för '{name}'"
+            if player is None:
+                unfilled_note = f"Ej matchad spelare för '{player_name}'"
                 note = f"{unfilled_note} | {note}" if note else unfilled_note
 
             session.add(
@@ -141,9 +141,9 @@ def import_schedule(session: Session, path: str | Path, *, team_id: int) -> int:
                     station=str(record.get("station") or "").strip(),
                     duty_name=str(record.get("syssla") or "").strip(),
                     venue=str(record.get("arena") or "").strip(),
-                    child_name=str(record.get("barn") or "").strip() or None,
+                    child_name=player_name,
                     note=note,
-                    person_id=person.id if person is not None else None,
+                    player_id=player.id if player is not None else None,
                 )
             )
             count += 1

@@ -8,6 +8,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .models import Slot, SwapRequest
+from .roster import parent_owns_slot
 
 
 class SwapError(Exception):
@@ -23,7 +24,7 @@ def propose_swap(
     now: datetime,
 ) -> SwapRequest:
     proposer_slot = session.get(Slot, proposer_slot_id)
-    if proposer_slot is None or proposer_slot.person_id != proposer_person_id:
+    if not parent_owns_slot(session, proposer_person_id, proposer_slot):
         raise SwapError("Du kan bara föreslå byte av ditt eget pass.")
 
     if target_slot_id == proposer_slot_id:
@@ -32,9 +33,11 @@ def propose_swap(
     target_slot = session.get(Slot, target_slot_id)
     if target_slot is None:
         raise SwapError("Passet du vill byta med hittades inte.")
-    if target_slot.person_id is None:
+    if target_slot.player_id is None:
         raise SwapError("Passet du vill byta med är ledigt och har ingen ägare.")
-    if target_slot.person_id == proposer_person_id:
+    # Both of a player's parents hold the same slots, so "a pass you already
+    # have" means the family's, not just this parent's own.
+    if parent_owns_slot(session, proposer_person_id, target_slot):
         raise SwapError("Du kan inte föreslå byte med ett pass du redan har.")
 
     request = SwapRequest(
@@ -69,13 +72,13 @@ def accept_swap(
 ) -> SwapRequest:
     request = _pending_request(session, swap_request_id, now=now)
     target_slot = session.get(Slot, request.target_slot_id)
-    if target_slot.person_id != accepting_person_id:
+    if not parent_owns_slot(session, accepting_person_id, target_slot):
         raise SwapError("Det här bytet är inte ditt att acceptera.")
 
     proposer_slot = session.get(Slot, request.proposer_slot_id)
-    proposer_slot.person_id, target_slot.person_id = (
-        target_slot.person_id,
-        proposer_slot.person_id,
+    proposer_slot.player_id, target_slot.player_id = (
+        target_slot.player_id,
+        proposer_slot.player_id,
     )
     request.status = "accepted"
     request.resolved_at = now
@@ -113,7 +116,7 @@ def decline_swap(
 ) -> SwapRequest:
     request = _pending_request(session, swap_request_id, now=now)
     target_slot = session.get(Slot, request.target_slot_id)
-    if target_slot.person_id != declining_person_id:
+    if not parent_owns_slot(session, declining_person_id, target_slot):
         raise SwapError("Det här bytet är inte ditt att avböja.")
 
     request.status = "declined"
