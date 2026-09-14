@@ -1,0 +1,14 @@
+{# Both names are always rendered; CSS shows one of them, so switching
+   between parent and player names needs no page load. #}
+{% macro person_name(parent, child) -%}
+<span class="nm"><span class="nm-parent">{{ parent }}</span><span class="nm-child">{{ child or parent }}</span></span>
+{%- endmacro %}
+
+{% macro slot_person(slot) -%}
+{{ person_name(slot.person.name if slot.person else "Ledigt", slot.child_name) }}
+{%- endmacro %}
+
+{% macro names_toggle() -%}
+<button type="button" class="names-toggle" data-names-toggle onclick="toggleNames()"
+        aria-pressed="false" title="Växla mellan föräldrars och spelares namn">Visar föräldrar</button>
+{%- endmacro %}

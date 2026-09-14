@@ -1,0 +1,27 @@
+schedule:
+  source: xlsx                # xlsx | google_csv | web_api
+  path: "schema.xlsx"
+  # url: "https://docs.google.com/spreadsheets/d/<id>/export?format=csv"
+  # För source: web_api, sätt url till duty-swap-webbappens /api/schedule,
+  # t.ex. "https://<app>.fly.dev/api/schedule". Kräver miljövariabeln
+  # SCHEDULE_API_KEY (samma nyckel som webbappens SCHEDULE_API_KEY).
+  # url: "https://<app>.fly.dev/api/schedule"
+
+  # Hur många dagar innan påminnelser skickas, om kalkylarket inte anger något.
+  # Ett värde = bara påminnelse dagen innan. Två värden = förhandsbesked + påminnelse.
+  default_lead_days: [1]
+
+  timezone: "Europe/Stockholm"
+  chore: "matchvärd"
+  documents_link: "https://innebandy.edholm.cc/dokument"  # länkas i påminnelsemailet
+  schedule_link: "https://docs.google.com/spreadsheets/d/<id>"
+
+  # Nyckelöverlämning visas bara om förra tillfället låg inom så här många dagar.
+  max_handoff_gap_days: 8
+
+email:
+  smtp_host: "smtp.fastmail.com"
+  smtp_port: 587
+  smtp_user: "robot@example.com"
+  from_address: "robot@example.com"
+  reply_to: "styrelsen@example.com"

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Caféschema — Inställningar{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h2>Inställningar</h2>
+</div>
+
+{% if saved %}
+  <div class="magic-sent">
+    <span class="headline">Sparat</span>
+    <span class="detail">Dina inställningar är uppdaterade.</span>
+  </div>
+{% endif %}
+
+<div class="settings-card">
+  <span class="settings-label">Inloggad som</span>
+  <div class="settings-identity">
+    <strong>{{ person.name }}</strong>
+    <span class="mono">{{ person.email }}</span>
+  </div>
+</div>
+
+<form method="post" class="settings-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <span class="settings-label">E-post</span>
+  <label class="switch-row">
+    <input type="checkbox" name="email_notifications" {{ "checked" if person.email_notifications }}>
+    <span class="switch-text">
+      <span class="switch-title">Skicka mig e-post om pass och byten</span>
+      <span class="switch-help">Påminnelser inför dina pass och besked när någon vill byta med dig,
+        accepterar eller avböjer.</span>
+    </span>
+  </label>
+  <p class="settings-note">Inloggningslänkar skickas alltid — utan dem går det inte att logga in.</p>
+  <div class="send-row">
+    <button type="submit" class="btn btn-primary btn-sm">Spara</button>
+  </div>
+</form>
+
+<div class="settings-card">
+  <span class="settings-label">Visa namn</span>
+  <label class="switch-row">
+    <input type="checkbox" id="names-setting" onchange="setNames(this.checked ? 'child' : 'parent')">
+    <span class="switch-text">
+      <span class="switch-title">Visa spelarnas namn i stället för föräldrarnas</span>
+      <span class="switch-help">Gäller bara den här enheten. Går också att växla direkt på
+        Mina pass och Hela laget.</span>
+    </span>
+  </label>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('names-setting').checked =
+    document.documentElement.getAttribute('data-names') === 'child';
+</script>
+{% endblock %}

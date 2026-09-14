@@ -1,0 +1,7 @@
+# Required environment variables (set as Fly secrets, never committed):
+#   SECRET_KEY          — random, used to sign sessions and magic-link tokens
+#   DB_PATH             — defaults to /data/duty.db
+#   SCHEDULE_API_KEY    — shared secret for GET /api/schedule; also set as
+#                          duty_mailer's SCHEDULE_API_KEY GitHub Secret
+#   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_ADDRESS
+#                       — same Fastmail credentials duty_mailer already uses

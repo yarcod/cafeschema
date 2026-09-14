@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "duty-web"
+version = "0.1.0"
+description = "Parent-facing duty schedule + swap web app"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+    "sqlalchemy>=2.0",
+    "itsdangerous>=2.1",
+    "flask-login>=0.6",
+    "flask-wtf>=1.2",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+duty_web = ["templates/*.html", "static/*"]

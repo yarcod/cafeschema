@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "_names.html" import person_name, slot_person, names_toggle %}
+{% block title %}Caféschema — Mina pass{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h2>Mina pass</h2>
+  <div class="head-actions">
+    {{ names_toggle() }}
+    <span class="count">{{ slots|length }} kommande</span>
+  </div>
+</div>
+
+{% for slot in slots %}
+  {% set mates = mates_by_slot.get(slot.id, []) %}
+  {% set candidates = candidates_by_slot.get(slot.id, []) %}
+  <div class="slot-card {{ 'next' if loop.first }}">
+    {% if loop.first %}<span class="next-badge">Nästa pass</span>{% endif %}
+    <div class="slot-top">
+      <div class="slot-date">
+        <span class="day-name">{{ slot.date|weekday_sv|capitalize }}</span>
+        <span class="day-num">{{ slot.date|short_date_sv }}</span>
+      </div>
+      <div class="slot-station"><span class="{{ slot.duty_name|chip_class }}">{{ slot.duty_name }}</span></div>
+    </div>
+    <div class="slot-meta">
+      <span class="time">{{ slot.start_time.strftime("%H:%M") }}–{{ slot.end_time.strftime("%H:%M") }}</span>
+      {% if slot.venue %}<span>{{ slot.venue }}</span>{% endif %}
+    </div>
+
+    <div class="mates">
+      <span class="mates-label">Tillsammans med</span>
+      {% if mates %}
+        <ul class="mates-list">
+          {% for mate in mates %}<li>{{ slot_person(mate) }}</li>{% endfor %}
+        </ul>
+      {% else %}
+        <span class="mates-none">Ingen annan är inbokad på passet</span>
+      {% endif %}
+    </div>
+
+    {% if slot.note %}<div class="slot-note">{{ slot.note }}</div>{% endif %}
+
+    <details class="todo">
+      <summary>Att göra på passet</summary>
+      <div class="todo-body">
+        <div class="todo-row"><span class="todo-key">Var</span><span>{{ slot.venue or "Meddelas" }}</span></div>
+        <div class="todo-row"><span class="todo-key">När</span><span>{{ slot.date|weekday_sv|capitalize }} {{ slot.date|short_date_sv }}, {{ slot.start_time.strftime("%H:%M") }}–{{ slot.end_time.strftime("%H:%M") }}</span></div>
+        <div class="todo-row"><span class="todo-key">Vad</span><span>{{ slot.duty_name }}</span></div>
+        <a class="btn btn-sm btn-block todo-link" href="{{ url_for('documents.dokument') }}">Läs instruktionerna</a>
+      </div>
+    </details>
+
+    <div class="slot-actions">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="toggleSwap('swap-{{ slot.id }}')">Föreslå byte</button>
+    </div>
+
+    <div class="swap-panel" id="swap-{{ slot.id }}">
+      {% if candidates %}
+      <form method="post" action="{{ url_for('swaps.create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="proposer_slot_id" value="{{ slot.id }}">
+        <div class="prompt">Välj ett eller flera pass att byta mot</div>
+        <p class="swap-help">Markera passen du skulle kunna ta, och skicka förslaget.
+          Den du frågar får ett mail och svarar ja eller nej.</p>
+        <div class="target-list">
+        {% for candidate in candidates %}
+        <label class="target-slot">
+          <input type="checkbox" name="target_slot_ids" value="{{ candidate.id }}"
+                 onchange="updateSendButton('swap-{{ slot.id }}')">
+          <span class="info">
+            <span>{{ candidate.date|short_date_sv }} · {{ candidate.duty_name }} · {{ candidate.start_time.strftime("%H:%M") }}–{{ candidate.end_time.strftime("%H:%M") }}</span>
+            <span class="who">{{ slot_person(candidate) }}</span>
+          </span>
+        </label>
+        {% endfor %}
+        </div>
+        <div class="send-row">
+          <button type="submit" class="btn btn-primary btn-block" id="send-swap-{{ slot.id }}" disabled>
+            Välj minst ett pass
+          </button>
+        </div>
+      </form>
+      {% else %}
+      <p class="empty-note">Inga andra pass att byta mot just nu.</p>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <p class="empty-state">Inga kommande pass med satt datum.</p>
+{% endfor %}
+
+{% if undated_slots %}
+  <div class="section-head">
+    <h2>Datum ej satt</h2>
+    <span class="count">{{ undated_slots|length }} pass</span>
+  </div>
+  {% for slot in undated_slots %}
+    {% set mates = mates_by_slot.get(slot.id, []) %}
+    <div class="slot-card undated">
+      <div class="slot-top">
+        <div class="slot-date">
+          <span class="day-name">Datum bestäms senare</span>
+          <span class="day-num">—</span>
+        </div>
+        <div class="slot-station"><span class="{{ slot.duty_name|chip_class }}">{{ slot.duty_name }}</span></div>
+      </div>
+      <div class="slot-meta">
+        <span class="time">{{ slot.start_time.strftime("%H:%M") }}–{{ slot.end_time.strftime("%H:%M") }}</span>
+        {% if slot.venue %}<span>{{ slot.venue }}</span>{% endif %}
+      </div>
+      {% if mates %}
+      <div class="mates">
+        <span class="mates-label">Tillsammans med</span>
+        <ul class="mates-list">
+          {% for mate in mates %}<li>{{ slot_person(mate) }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if slot.note %}<div class="slot-note">{{ slot.note }}</div>{% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleSwap(id) {
+    document.getElementById(id).classList.toggle('show');
+  }
+  function updateSendButton(panelId) {
+    var panel = document.getElementById(panelId);
+    var checked = panel.querySelectorAll('input[type="checkbox"]:checked').length;
+    var sendBtn = document.getElementById('send-' + panelId);
+    if (!sendBtn) return;
+    sendBtn.disabled = checked === 0;
+    // The label says what the button will do right now, so it never sits
+    // there greyed out without explaining what is missing.
+    sendBtn.textContent = checked === 0
+      ? 'Välj minst ett pass'
+      : 'Skicka förslag till ' + checked + (checked === 1 ? ' person' : ' personer');
+  }
+</script>
+{% endblock %}

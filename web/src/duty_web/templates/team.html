@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% from "_names.html" import slot_person, names_toggle %}
+{% block title %}Caféschema — Hela laget{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h2>Hela laget</h2>
+  <div class="head-actions">
+    {{ names_toggle() }}
+    <span class="count">{{ MONTHS_SV[month - 1]|capitalize }} {{ year }}</span>
+  </div>
+</div>
+
+<div class="cal-head">
+  <div class="cal-nav">
+    <a href="{{ url_for('schedule.team', year=prev_year, month=prev_month) }}" aria-label="Föregående månad">‹</a>
+  </div>
+  <div class="month">{{ MONTHS_SV[month - 1]|capitalize }}</div>
+  <div class="cal-nav">
+    <a href="{{ url_for('schedule.team', year=next_year, month=next_month) }}" aria-label="Nästa månad">›</a>
+  </div>
+</div>
+
+<div class="cal-grid">
+  <div class="wd">M</div><div class="wd">T</div><div class="wd">O</div>
+  <div class="wd">T</div><div class="wd">F</div><div class="wd">L</div><div class="wd">S</div>
+  {% for week in month_weeks(year, month) %}
+    {% for day in week %}
+      {% if day == 0 %}
+        <div class="day pad"></div>
+      {% else %}
+        {% set day_duties = duties_by_day.get(day, []) %}
+        {% if day_duties %}
+        <a class="day has-duty" href="#dag-{{ day }}">
+          <span>{{ day }}</span>
+          <span class="dots">
+            {% for duty_name in day_duties %}<span class="{{ duty_name|dot_class }}"></span>{% endfor %}
+          </span>
+        </a>
+        {% else %}
+        <div class="day"><span>{{ day }}</span></div>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+</div>
+
+{% if duty_names %}
+<div class="legend">
+  {% for duty_name in duty_names %}
+    <span><span class="{{ duty_name|dot_class }}"></span>{{ duty_name }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="agenda">
+  {% for day in days %}
+    <div class="day-group" id="dag-{{ day.date.day }}">
+      <div class="day-head">
+        <span class="day-title">{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}</span>
+        <span class="day-count">{{ day.shifts|length }} pass</span>
+      </div>
+      {% for shift in day.shifts %}
+        <div class="shift {{ 'is-first' if shift.is_first }} {{ 'is-last' if shift.is_last }}">
+          <div class="shift-rail" aria-hidden="true"><span class="shift-node"></span></div>
+          <div class="shift-body">
+            <div class="shift-top">
+              <span class="shift-time">{{ shift.start_time.strftime("%H:%M") }}–{{ shift.end_time.strftime("%H:%M") }}</span>
+              <span class="{{ shift.duty_name|chip_class }}">{{ shift.duty_name }}</span>
+            </div>
+            {% if shift.of > 1 %}
+            <div class="shift-order">
+              <span class="shift-count">{{ shift.position }} av {{ shift.of }}</span>
+              {% if shift.is_first %}<span class="shift-role">Först på dagen</span>{% endif %}
+              {% if shift.is_last %}<span class="shift-role">Sist på dagen</span>{% endif %}
+            </div>
+            {% endif %}
+            {% for slot in shift.slots %}
+              <div class="roster-row"><span>{{ slot_person(slot) }}</span></div>
+            {% endfor %}
+            {% if shift.venue %}<div class="shift-venue">{{ shift.venue }}</div>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty-state">Inga pass denna månad.</p>
+  {% endfor %}
+</div>
+
+{% if undated_shifts %}
+  <div class="section-head">
+    <h2>Datum ej satt</h2>
+    <span class="count">{{ undated_shifts|length }} pass</span>
+  </div>
+  <div class="agenda">
+    {% for shift in undated_shifts %}
+      <div class="agenda-day">
+        <div class="title">
+          <span>Datum bestäms senare</span>
+          <span class="{{ shift.duty_name|chip_class }}">{{ shift.duty_name }}</span>
+        </div>
+        <div class="shift-meta">
+          {{ shift.start_time.strftime("%H:%M") }}–{{ shift.end_time.strftime("%H:%M") }}{% if shift.venue %} · {{ shift.venue }}{% endif %}
+        </div>
+        {% for slot in shift.slots %}
+          <div class="roster-row"><span>{{ slot_person(slot) }}</span></div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

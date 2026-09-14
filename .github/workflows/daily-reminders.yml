@@ -1,0 +1,38 @@
+name: Dagliga påminnelser
+
+on:
+  schedule:
+    # 06:00 UTC = 08:00 svensk sommartid, 07:00 vintertid.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Visa vad som skulle skickas, skicka inget"
+        type: boolean
+        default: true
+      date:
+        description: "Kör som om det vore detta datum (ÅÅÅÅ-MM-DD)"
+        type: string
+        default: ""
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Installera
+        run: pip install --no-cache-dir .
+
+      - name: Skicka påminnelser
+        env:
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SCHEDULE_API_KEY: ${{ secrets.SCHEDULE_API_KEY }}
+        run: |
+          python -m duty_mailer \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.date && format('--date {0}', inputs.date) || '' }}

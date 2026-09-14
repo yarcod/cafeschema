@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_names.html" import person_name %}
+{% block title %}Caféschema — Byten{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h2>Byten</h2>
+  <span class="count">{{ incoming|length }} väntande</span>
+</div>
+
+{% for item in incoming %}
+  <div class="req-card">
+    <div class="req-top">
+      <span class="from">Från {{ person_name(item.other_name, item.other_child) }}</span>
+      <span class="status-pill pending">Väntar på dig</span>
+    </div>
+    <div class="swap-compare">
+      <div class="side"><span class="lbl">Du ger</span><span>{{ item.you_give }}</span></div>
+      <span class="arrow">⇄</span>
+      <div class="side"><span class="lbl">Du får</span><span>{{ item.you_receive }}</span></div>
+    </div>
+    <div class="slot-actions">
+      <form method="post" action="{{ url_for('swaps.accept', swap_id=item.request.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary btn-sm">Acceptera</button>
+      </form>
+      <form method="post" action="{{ url_for('swaps.decline', swap_id=item.request.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Avböj</button>
+      </form>
+    </div>
+  </div>
+{% endfor %}
+
+{% for item in outgoing %}
+  <div class="req-card">
+    <div class="req-top">
+      <span class="from">Till {{ person_name(item.other_name, item.other_child) }}</span>
+      <span class="status-pill pending">Väntar på svar</span>
+    </div>
+    <div class="swap-compare">
+      <div class="side"><span class="lbl">Du ger</span><span>{{ item.you_give }}</span></div>
+      <span class="arrow">⇄</span>
+      <div class="side"><span class="lbl">Du får</span><span>{{ item.you_receive }}</span></div>
+    </div>
+    <div class="slot-actions">
+      <button type="button" class="btn btn-ghost btn-sm" disabled>Skickad, väntar</button>
+    </div>
+  </div>
+{% endfor %}
+
+{% if not incoming and not outgoing %}
+  <p class="empty-state">Inga byten på gång just nu. Föreslå ett från Mina pass.</p>
+{% endif %}
+{% endblock %}

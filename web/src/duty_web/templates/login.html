@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Caféschema — Logga in{% endblock %}
+{% block content %}
+<div class="login-body">
+  <h2>Välkommen</h2>
+  <p class="sub">Inget lösenord behövs. Ange din e-postadress så mailar vi en inloggningslänk, om adressen finns i schemat.</p>
+
+  <form method="post" action="{{ url_for('auth.login') }}" class="field">
+    <label class="field-label" for="email">E-postadress</label>
+    <input type="email" id="email" name="email" required autofocus placeholder="namn@exempel.se" value="{{ sent_to or '' }}">
+    <button class="btn btn-primary btn-block" type="submit" style="margin-top: 4px;">Skicka inloggningslänk</button>
+  </form>
+
+  {% if sent_to %}
+  <div class="magic-sent">
+    <div class="headline">Länk skickad ✓</div>
+    <div class="detail">
+      Om <strong>{{ sent_to }}</strong> finns i schemat har vi mailat en inloggningslänk dit.
+      Den är giltig i 20 minuter och kan bara användas en gång.
+    </div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="magic-sent error">
+    <div class="headline">Länken gick inte att använda</div>
+    <div class="detail">{{ error }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="security-note">
+  <span aria-hidden="true">🔒</span>
+  <span>Länken är personlig och tidsbegränsad. Dela den inte — bad du inte om den kan du ignorera mailet.</span>
+</div>
+{% endblock %}

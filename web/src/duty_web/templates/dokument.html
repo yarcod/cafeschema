@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Caféschema — Dokument{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h2>Dokument</h2>
+  <span class="count">{{ documents|length }} st</span>
+</div>
+
+<p class="empty-note">Instruktioner och annat som är bra att läsa inför ett pass.</p>
+
+{% for document in documents %}
+  <a class="doc-row" href="{{ url_for('documents.download', filename=document.filename) }}">
+    <span class="doc-kind">{{ document.suffix }}</span>
+    <span class="doc-text">
+      <span class="doc-name">{{ document.name }}</span>
+      <span class="doc-meta">{{ document.size_kb }} kB</span>
+    </span>
+    <span class="doc-arrow" aria-hidden="true">→</span>
+  </a>
+{% else %}
+  <p class="empty-state">Inga dokument uppladdade ännu.</p>
+{% endfor %}
+{% endblock %}

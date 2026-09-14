@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Caféschema{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>
+  // Applied before first paint so the page doesn't flash the other theme
+  // or the other set of names.
+  (function () {
+    try {
+      var theme = localStorage.getItem('cafeschema-theme');
+      if (theme === 'light' || theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      if (localStorage.getItem('cafeschema-names') === 'child') {
+        document.documentElement.setAttribute('data-names', 'child');
+      }
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="brand">
+      <div class="mark">C</div>
+      <div class="name">Caféschema</div>
+    </div>
+    <div class="topbar-actions">
+      <div class="theme-toggle" role="group" aria-label="Färgtema">
+        <button type="button" id="btn-auto" onclick="setTheme('auto')">Auto</button>
+        <button type="button" id="btn-light" onclick="setTheme('light')" aria-label="Ljust läge">☀</button>
+        <button type="button" id="btn-dark" onclick="setTheme('dark')" aria-label="Mörkt läge">☾</button>
+      </div>
+      {% if current_user.is_authenticated %}
+      <a class="icon-btn {{ 'active' if request.endpoint == 'settings.installningar' }}"
+         href="{{ url_for('settings.installningar') }}" aria-label="Inställningar" title="Inställningar">⚙</a>
+      {% endif %}
+    </div>
+  </div>
+  {% if current_user.is_authenticated %}
+  <nav class="tabs">
+    <a class="{{ 'active' if request.endpoint == 'schedule.mine' }}" href="{{ url_for('schedule.mine') }}">Mina pass</a>
+    <a class="{{ 'active' if request.endpoint == 'schedule.team' }}" href="{{ url_for('schedule.team') }}">Hela laget</a>
+    <a class="{{ 'active' if request.endpoint == 'swaps.byten' }}" href="{{ url_for('swaps.byten') }}">Byten{% if pending_swap_count %}<span class="tab-badge">{{ pending_swap_count }}</span>{% endif %}</a>
+    <a class="{{ 'active' if request.endpoint == 'documents.dokument' }}" href="{{ url_for('documents.dokument') }}">Dokument</a>
+  </nav>
+  {% endif %}
+  <div class="view">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+<script>
+  function setTheme(mode) {
+    if (mode === 'auto') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', mode);
+    }
+    document.getElementById('btn-auto').classList.toggle('active', mode === 'auto');
+    document.getElementById('btn-light').classList.toggle('active', mode === 'light');
+    document.getElementById('btn-dark').classList.toggle('active', mode === 'dark');
+    try { localStorage.setItem('cafeschema-theme', mode); } catch (e) {}
+  }
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem('cafeschema-theme'); } catch (e) {}
+    setTheme(saved || 'auto');
+  })();
+
+  function setNames(mode) {
+    if (mode === 'child') {
+      document.documentElement.setAttribute('data-names', 'child');
+    } else {
+      document.documentElement.removeAttribute('data-names');
+    }
+    document.querySelectorAll('[data-names-toggle]').forEach(function (button) {
+      button.textContent = mode === 'child' ? 'Visar barn' : 'Visar föräldrar';
+      button.setAttribute('aria-pressed', mode === 'child' ? 'true' : 'false');
+    });
+    try { localStorage.setItem('cafeschema-names', mode); } catch (e) {}
+  }
+
+  function toggleNames() {
+    var current = document.documentElement.getAttribute('data-names') === 'child';
+    setNames(current ? 'parent' : 'child');
+  }
+
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem('cafeschema-names'); } catch (e) {}
+    setNames(saved === 'child' ? 'child' : 'parent');
+  })();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
