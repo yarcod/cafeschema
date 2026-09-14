@@ -44,20 +44,27 @@ class WebAppApiSource:
             key_locations: dict[date, str | None] = {}
             for entry in response.json():
                 due = datetime.strptime(entry["date"], "%Y-%m-%d").date()
-                person_data = entry["person"]
-                email = person_data["email"]
-                # A parent can switch reminders off in the web app. Older
-                # app versions don't send the field at all, so absence
-                # means "still opted in".
-                if not person_data.get("email_notifications", True):
-                    continue
-                # One row per station means a parent holding two stations on
-                # the same date appears twice in the API response; dedupe by
-                # email within the date, matching rows.py's own behavior, so
-                # they aren't listed twice or double-addressed in the To:.
-                if email not in seen_emails[due]:
-                    seen_emails[due].add(email)
-                    by_date[due].append(Person(email=email, name=person_data["name"]))
+                # A duty belongs to a player, and either parent may turn up
+                # for it, so both are reminded. Older app versions sent the
+                # single parent who happened to own the slot instead.
+                parents = entry.get("parents")
+                if parents is None:
+                    parents = [entry["person"]]
+                for parent in parents:
+                    email = parent["email"]
+                    # A parent can switch reminders off in the web app. Older
+                    # app versions don't send the field at all, so absence
+                    # means "still opted in".
+                    if not parent.get("email_notifications", True):
+                        continue
+                    # One row per station means a parent holding two stations
+                    # on the same date appears twice in the API response;
+                    # dedupe by email within the date, matching rows.py's own
+                    # behavior, so they aren't listed twice or
+                    # double-addressed in the To:.
+                    if email not in seen_emails[due]:
+                        seen_emails[due].add(email)
+                        by_date[due].append(Person(email=email, name=parent["name"]))
                 if due not in key_locations:
                     # The xlsx's key-handoff info travels in the "note" /
                     # "anteckning" column (per the spec's own example row),

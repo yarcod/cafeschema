@@ -208,3 +208,94 @@ def test_fetch_skips_people_who_turned_off_email():
     occurrences = source.fetch()
 
     assert [p.email for p in occurrences[0].people] == ["ja@exempel.se"]
+
+
+@responses.activate
+def test_fetch_reminds_every_parent_of_the_player():
+    """A duty belongs to the player and either parent may turn up for it, so
+    both are reminded — the single-parent shape below was the bug that left
+    half the team never hearing about their own duties."""
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[
+            {
+                "date": "2026-01-16", "start_time": "18:00", "end_time": "21:00",
+                "station": "Cafe", "duty_name": "Arena värdskap",
+                "venue": "Wallenstam arena", "note": None,
+                "child_name": "Klara Ahlqvist",
+                "player": {"name": "Klara Ahlqvist"},
+                "parents": [
+                    {"name": "Hans Ahlqvist", "email": "hans@exempel.se",
+                     "email_notifications": True},
+                    {"name": "Lena Ahlqvist", "email": "lena@exempel.se",
+                     "email_notifications": True},
+                ],
+            },
+        ],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occurrences = source.fetch()
+
+    assert [p.email for p in occurrences[0].people] == [
+        "hans@exempel.se", "lena@exempel.se",
+    ]
+
+
+@responses.activate
+def test_fetch_skips_only_the_parent_who_turned_off_email():
+    """The opt-out is per parent; one of them opting out must not silence
+    the other."""
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[
+            {
+                "date": "2026-01-16", "start_time": "18:00", "end_time": "21:00",
+                "station": "Cafe", "duty_name": "Arena värdskap",
+                "venue": "Wallenstam arena", "note": None,
+                "player": {"name": "Klara Ahlqvist"},
+                "parents": [
+                    {"name": "Hans Ahlqvist", "email": "hans@exempel.se",
+                     "email_notifications": False},
+                    {"name": "Lena Ahlqvist", "email": "lena@exempel.se",
+                     "email_notifications": True},
+                ],
+            },
+        ],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occurrences = source.fetch()
+
+    assert [p.email for p in occurrences[0].people] == ["lena@exempel.se"]
+
+
+@responses.activate
+def test_fetch_dedupes_a_family_holding_two_stations_on_the_same_date():
+    entry = {
+        "date": "2026-01-16", "start_time": "18:00", "end_time": "21:00",
+        "station": "Cafe", "duty_name": "Arena värdskap",
+        "venue": "Wallenstam arena", "note": None,
+        "player": {"name": "Klara Ahlqvist"},
+        "parents": [
+            {"name": "Hans Ahlqvist", "email": "hans@exempel.se"},
+            {"name": "Lena Ahlqvist", "email": "lena@exempel.se"},
+        ],
+    }
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[entry, {**entry, "station": "Entré"}],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occurrences = source.fetch()
+
+    assert [p.email for p in occurrences[0].people] == [
+        "hans@exempel.se", "lena@exempel.se",
+    ]
