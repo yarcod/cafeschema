@@ -28,6 +28,14 @@ jobs:
       - name: Installera
         run: pip install --no-cache-dir .
 
+      # config.yaml innehåller avsändaradress och schemakälla, alltså
+      # personuppgifter, och ligger därför utanför repot. Den kommer in som
+      # en secret i stället.
+      - name: Skriv config
+        run: printf '%s' "$DUTY_CONFIG" > config.yaml
+        env:
+          DUTY_CONFIG: ${{ secrets.DUTY_CONFIG }}
+
       - name: Skicka påminnelser
         env:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
