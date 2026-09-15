@@ -41,6 +41,9 @@ class Occurrence:
     people: tuple[Person, ...]
     lead_days: tuple[int, ...] = (1,)
     key_location: str | None = None
+    # The instruction for this particular duty, as the web app links it.
+    # None falls back to the document index from config.yaml.
+    document_link: str | None = None
 
     def __post_init__(self) -> None:
         if not self.people:

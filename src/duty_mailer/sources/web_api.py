@@ -42,6 +42,7 @@ class WebAppApiSource:
             by_date: dict[date, list[Person]] = defaultdict(list)
             seen_emails: dict[date, set[str]] = defaultdict(set)
             key_locations: dict[date, str | None] = {}
+            document_links: dict[date, str | None] = {}
             for entry in response.json():
                 due = datetime.strptime(entry["date"], "%Y-%m-%d").date()
                 # A duty belongs to a player, and either parent may turn up
@@ -74,6 +75,15 @@ class WebAppApiSource:
                     # don't silently lose it after cutover to this source.
                     note = entry.get("note")
                     key_locations[due] = note.strip() if isinstance(note, str) else None
+                if due not in document_links:
+                    # Which instruction to read is the web app's call — it
+                    # owns the documents. A date holding two different duties
+                    # would get the first one's instruction; the mail is one
+                    # per date, so there is nowhere to put a second link.
+                    # Older app versions don't send the field, and the mail
+                    # then falls back to the document index from config.yaml.
+                    link = entry.get("document_url")
+                    document_links[due] = link if isinstance(link, str) and link else None
 
             return [
                 Occurrence(
@@ -81,6 +91,7 @@ class WebAppApiSource:
                     people=tuple(people),
                     lead_days=self._default_lead_days,
                     key_location=key_locations.get(due),
+                    document_link=document_links.get(due),
                 )
                 for due, people in sorted(by_date.items())
             ]

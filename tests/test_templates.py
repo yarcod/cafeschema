@@ -98,3 +98,40 @@ def test_people_without_names_show_their_address():
 def test_body_has_no_leading_or_trailing_blank_lines():
     msg = render(THIS_WEEK, Role.PAMINNELSE, None, chore="matchvärd", schedule_link=None)
     assert msg.body == msg.body.strip()
+
+
+CUP = Occurrence(
+    due=date(2026, 9, 25),
+    people=(BJORN,),
+    document_link="https://web.example/dokument/MIH.pdf",
+)
+
+
+def test_the_mail_links_to_the_instruction_for_this_duty():
+    msg = render(
+        CUP,
+        Role.PAMINNELSE,
+        None,
+        chore="cafévärd",
+        schedule_link=None,
+        documents_link="https://web.example/dokument",
+    )
+    assert "https://web.example/dokument/MIH.pdf" in msg.body
+    assert "https://web.example/dokument/MIH.pdf" in msg.html_body
+
+
+def test_the_mail_falls_back_to_the_document_index():
+    msg = render(
+        THIS_WEEK,
+        Role.PAMINNELSE,
+        None,
+        chore="cafévärd",
+        schedule_link=None,
+        documents_link="https://web.example/dokument",
+    )
+    assert "https://web.example/dokument" in msg.body
+
+
+def test_no_instruction_link_at_all_when_nothing_is_configured():
+    msg = render(THIS_WEEK, Role.PAMINNELSE, None, chore="cafévärd", schedule_link=None)
+    assert "Instruktioner:" not in msg.body

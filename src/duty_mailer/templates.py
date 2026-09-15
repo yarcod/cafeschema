@@ -54,6 +54,9 @@ def render(
     lines: list[str] = []
     handover: str | None = None
     key_location: str | None = None
+    # The instruction for this duty when the schedule source knows it, so the
+    # link lands on the right café's PDF rather than on the whole shelf.
+    documents_link = occ.document_link or documents_link
 
     if role is Role.FORHANDSBESKED:
         subject = f"Er tur snart — {chore} {when}"

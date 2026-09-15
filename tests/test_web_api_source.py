@@ -299,3 +299,50 @@ def test_fetch_dedupes_a_family_holding_two_stations_on_the_same_date():
     assert [p.email for p in occurrences[0].people] == [
         "hans@exempel.se", "lena@exempel.se",
     ]
+
+
+@responses.activate
+def test_fetch_keeps_the_instruction_link_the_app_sends():
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[
+            {
+                "date": "2026-09-25", "start_time": "16:30", "end_time": "22:45",
+                "station": "Café", "duty_name": "Bästkustcupen",
+                "venue": "Mölnlycke idrottshall", "note": None,
+                "document_url": "https://web.example/dokument/MIH.pdf",
+                "parents": [{"name": "Alva", "email": "alva@exempel.se"}],
+            },
+        ],
+        match=[responses.matchers.header_matcher({"X-Api-Key": "secret"})],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occ = source.fetch()[0]
+
+    assert occ.document_link == "https://web.example/dokument/MIH.pdf"
+
+
+@responses.activate
+def test_fetch_leaves_the_instruction_link_unset_when_the_app_has_none():
+    """Older app versions don't send the field; the mail falls back to the
+    document index from config.yaml."""
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[
+            {
+                "date": "2026-09-25", "start_time": "16:30", "end_time": "22:45",
+                "station": "Café", "duty_name": "Bästkustcupen",
+                "venue": "", "note": None,
+                "parents": [{"name": "Alva", "email": "alva@exempel.se"}],
+            },
+        ],
+        match=[responses.matchers.header_matcher({"X-Api-Key": "secret"})],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    assert source.fetch()[0].document_link is None

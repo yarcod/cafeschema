@@ -58,7 +58,9 @@ inga lösenord.
 - `xlsx` — läser en Excel-fil (`schedule.path`)
 - `google_csv` — läser ett publicerat Google Kalkylark som CSV (`schedule.url`)
 - `web_api` — läser duty-swap-webbappens `/api/schedule` (`schedule.url`),
-  autentiserat med miljövariabeln `SCHEDULE_API_KEY`
+  autentiserat med miljövariabeln `SCHEDULE_API_KEY`. Svaret säger också vilken
+  instruktion passet har (`document_url`), och mailet länkar dit i stället för
+  till `documents_link`, som då bara är reserv.
 
 ## Hemligheter
 
