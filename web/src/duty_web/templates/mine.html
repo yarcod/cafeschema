@@ -45,8 +45,8 @@
       <div class="todo-body">
         <div class="todo-row"><span class="todo-key">Var</span><span>{{ slot.venue or "Meddelas" }}</span></div>
         <div class="todo-row"><span class="todo-key">När</span><span>{{ slot.date|weekday_sv|capitalize }} {{ slot.date|short_date_sv }}, {{ slot.start_time.strftime("%H:%M") }}–{{ slot.end_time.strftime("%H:%M") }}</span></div>
-        <div class="todo-row"><span class="todo-key">Vad</span><span>{{ slot.duty_name }}</span></div>
-        <a class="btn btn-sm btn-block todo-link" href="{{ url_for('documents.dokument') }}">Läs instruktionerna</a>
+        <div class="todo-row"><span class="todo-key">Vad</span><span>{{ slot.station or slot.duty_name }}</span></div>
+        <a class="btn btn-sm btn-block todo-link" href="{{ slot.duty_name|duty_document_url }}">Läs instruktionerna</a>
       </div>
     </details>
 

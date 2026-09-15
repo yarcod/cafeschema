@@ -26,13 +26,31 @@ def make_family(session, team, player_name, parents):
 
 
 @pytest.fixture
-def app():
+def documents_dir(tmp_path):
+    """The instructions as they sit on the Fly volume.
+
+    Named exactly as duties.py maps them, so a test can tell a real link to
+    an instruction apart from the fallback to the document index.
+    """
+    directory = tmp_path / "dokument"
+    directory.mkdir()
+    for name in (
+        "Cafeteria_Instruktion_MIH.pdf",
+        "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf",
+    ):
+        (directory / name).write_bytes(b"%PDF-1.4 fake")
+    return directory
+
+
+@pytest.fixture
+def app(documents_dir):
     config = AppConfig(
         secret_key="test-secret",
         db_path=":memory:",
         api_key="test-api-key",
         smtp_host="localhost", smtp_port=587, smtp_user="u",
         smtp_password="p", from_address="noreply@exempel.se",
+        documents_dir=str(documents_dir),
     )
     application = create_app(config)
     application.config.update(TESTING=True)

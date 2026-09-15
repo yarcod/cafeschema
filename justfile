@@ -63,6 +63,11 @@ schedule-push file="data/seed_sasong_26_27.xlsx":
     printf 'put %s /tmp/seed.xlsx\nput scripts/remote_import.py /tmp/remote_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_import.py"
 
+# Rename duties and fill in venue/café on the slots already imported (idempotent)
+duties-push:
+    printf 'put scripts/rename_duty_profiles.py /tmp/rename_duty_profiles.py\n' | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/rename_duty_profiles.py"
+
 # One-off: move slot ownership from a single parent to the player (idempotent)
 migrate-push file="data/f15_parent_mailing_list.csv":
     printf 'put %s /tmp/roster.csv\nput scripts/migrate_player_ownership.py /tmp/migrate_player_ownership.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp

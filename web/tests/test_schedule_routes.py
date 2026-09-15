@@ -70,3 +70,57 @@ def test_team_lists_slots_whose_date_is_not_set_yet(client, seeded, session_fact
 
     assert "Datum ej satt" in body
     assert "Arena värdskap vinter" in body
+
+
+def _cafepass_slot(session_factory, seeded, **overrides):
+    """A slot as the schedule now imports it: named, placed and stationed."""
+    from datetime import date, time, timedelta
+
+    from duty_web.models import Slot
+
+    session = session_factory()
+    fields = dict(
+        team_id=seeded["team"].id,
+        date=date.today() + timedelta(days=3),
+        start_time=time(18, 0),
+        end_time=time(21, 0),
+        station="Café Arena B, nedre plan",
+        duty_name="Cafépass",
+        venue="Wallenstam arena",
+        player_id=seeded["player"].id,
+    )
+    fields.update(overrides)
+    session.add(Slot(**fields))
+    session.commit()
+
+
+def test_att_gora_says_where_and_which_cafe(client, seeded, session_factory):
+    _cafepass_slot(session_factory, seeded)
+    _login(client, seeded["person"])
+
+    body = client.get("/").get_data(as_text=True)
+
+    assert "Wallenstam arena" in body
+    assert "Café Arena B, nedre plan" in body
+
+
+def test_att_gora_links_to_the_instruction_for_that_duty(
+    client, seeded, session_factory
+):
+    _cafepass_slot(session_factory, seeded)
+    _login(client, seeded["person"])
+
+    body = client.get("/").get_data(as_text=True)
+
+    assert "/dokument/Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf" in body
+
+
+def test_att_gora_falls_back_to_the_duty_name_when_there_is_no_station(
+    client, seeded, session_factory
+):
+    _cafepass_slot(session_factory, seeded, station="", duty_name="Åby Julmarknad")
+    _login(client, seeded["person"])
+
+    body = client.get("/").get_data(as_text=True)
+
+    assert "Åby Julmarknad" in body

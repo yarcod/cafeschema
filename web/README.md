@@ -44,12 +44,32 @@ Filerna ligger på Fly-volymen under `/data/dokument`, så en ny fil behöver in
 driftsättning. Tillåtna filtyper: `pdf`, `png`, `jpg`, `txt`, `md`. Filnamnet blir
 rubriken i listan — `Kiosk_instruktioner.pdf` visas som "Kiosk instruktioner".
 
+### Vilken instruktion hör till vilket pass
+
+Både **Att göra på passet** och påminnelsemailet länkar till den enda instruktion
+passet behöver, inte till listan. Kopplingen står i
+`web/src/duty_web/duties.py`:
+
+| Pass | Var | Vad | Instruktion |
+|---|---|---|---|
+| Bästkustcupen | Mölnlycke idrottshall | Café | `Cafeteria_Instruktion_MIH.pdf` |
+| Cafépass | Wallenstam arena | Café Arena B, nedre plan | `Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf` |
+
+Ett pass utan koppling — eller vars fil inte är uppladdad — länkar till listan i
+stället, så knappen aldrig leder till en 404. Lägger man till ett pass i tabellen
+ska samma rad in i `scripts/build_seed_xlsx.py` (`tests/test_build_seed_xlsx.py`
+larmar annars), och `just duties-push` sätter plats och café på de pass som redan
+är importerade.
+
 ## Påminnelsemail
 
 `duty_mailer` skickar påminnelsen inför ett pass. Mailet går ut både som HTML (i
 samma formspråk som sajten) och som ren text, och innehåller vilka som står på
 passet, nyckelinfo från förra gången, samt knappar till schemat och till
 **Dokument**.
+
+Knappen **Läs instruktionerna** går till passets egen instruktion när appen vet
+vilken det är (`/api/schedule` skickar med `document_url`); annars till listan.
 
 Länkarna styrs från `config.yaml`:
 
@@ -100,6 +120,9 @@ Bladet **`Säsong 26-27`**, en rad per pass:
 
 - **Aktivitet** — vad som helst. Nya aktiviteter behöver inte läggas upp någonstans;
   de får automatiskt en egen färg utifrån namnet, samma färg för alla.
+  Båda "Arena värdskap"-raderna heter **Cafépass** i appen — `build_seed_xlsx.py`
+  döper om dem vid bygget, och fyller samtidigt i arena och café (se *Vilken
+  instruktion hör till vilket pass*).
 - **Datum** — `ÅÅÅÅ-MM-DD`. Är datumet inte spikat ännu duger vilken text som helst
   (t.ex. `Datum ej satt (VT27)`) — passet visas då under **Datum ej satt** i stället
   för i kalendern.

@@ -29,7 +29,7 @@ def test_every_duty_name_maps_to_a_defined_palette_class(app):
         __import__("pathlib").Path(app.root_path) / "static" / "style.css"
     ).read_text(encoding="utf-8")
     names = [
-        "Bästkustcupen", "Arena värdskap höst", "Arena värdskap vinter",
+        "Bästkustcupen", "Cafépass", "Arena värdskap höst", "Arena värdskap vinter",
         "Åby Julmarknad", "Bemanning Gothia", "",
     ]
     for name in names:

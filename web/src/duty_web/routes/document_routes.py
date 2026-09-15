@@ -3,14 +3,27 @@
 Files live on the Fly volume rather than in the image, so adding one doesn't
 need a deploy (see `just docs-push`). The reminder mail links here instead of
 attaching anything, so there is one copy to keep up to date.
+
+Both the mail and Att göra link to the one instruction that duty needs
+(`document_url_for_duty`) rather than to the index, so nobody has to pick the
+right café's PDF out of a list on the way to their shift.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, render_template, send_from_directory
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    render_template,
+    send_from_directory,
+    url_for,
+)
 from flask_login import login_required
+
+from ..duties import profile_for
 
 document_bp = Blueprint("documents", __name__)
 
@@ -38,6 +51,30 @@ def _documents() -> list[dict]:
         for path in sorted(directory.iterdir())
         if path.is_file() and path.suffix.lower() in ALLOWED_SUFFIXES
     ]
+
+
+def instruction_url_for_duty(
+    duty_name: str | None, *, external: bool = False
+) -> str | None:
+    """This duty's own instruction, or None if there isn't one to link to.
+
+    None also covers "mapped, but not uploaded yet": a link to a file the
+    volume doesn't have would 404 on the morning of the shift.
+    """
+    profile = profile_for(duty_name)
+    if profile is None or not profile.document:
+        return None
+    if not (_documents_dir() / profile.document).is_file():
+        return None
+    return url_for("documents.download", filename=profile.document, _external=external)
+
+
+def document_url_for_duty(duty_name: str | None, *, external: bool = False) -> str:
+    """Where Att göra's "Läs instruktionerna" goes — the index as a fallback,
+    so the button always leads somewhere readable."""
+    return instruction_url_for_duty(duty_name, external=external) or url_for(
+        "documents.dokument", _external=external
+    )
 
 
 @document_bp.route("/dokument")

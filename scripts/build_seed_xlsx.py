@@ -54,10 +54,22 @@ def load_name_fixes() -> dict[str, str]:
         return {}
     return json.loads(NAME_FIXES_PATH.read_text(encoding="utf-8"))
 
-# Only the arena-hosting duties have a venue in the source; the cup and
-# market activities are held elsewhere and the sheet doesn't say where, so
-# those are left blank rather than guessed at.
-ARENA_VENUE = "Wallenstam arena"
+# The sheet names an activity and nothing else — not which building, not
+# which café inside it. That is the team's own knowledge, so it is filled in
+# here on the way into the seed file.
+#
+# Mirrors DUTY_PROFILES / RENAMED_DUTIES in web/src/duty_web/duties.py, which
+# is the canonical table; this script runs in the root venv and can't import
+# duty_web. tests/test_build_seed_xlsx.py fails if the two drift apart.
+DUTY_PROFILES = {
+    "Bästkustcupen": ("Mölnlycke idrottshall", "Café"),
+    "Cafépass": ("Wallenstam arena", "Café Arena B, nedre plan"),
+}
+
+RENAMED_DUTIES = {
+    "Arena värdskap höst": "Cafépass",
+    "Arena värdskap vinter": "Cafépass",
+}
 
 SEED_HEADER = [
     "ar", "syssla", "arena", "station", "vecka", "datum", "veckodag",
@@ -165,7 +177,10 @@ def build_rows(schedule_path: Path, roster_players: set[str]) -> list[list]:
         # which is the only thing a parent can plan around until the term's
         # dates are set — so keep it rather than dropping it with the prefix.
         shift_weekday = "" if slot_date is not None else _weekday_prefix(row[idx["Tid"]])
-        arena = ARENA_VENUE if activity.startswith("Arena värdskap") else ""
+        activity = RENAMED_DUTIES.get(activity, activity)
+        # An activity we have no profile for is still a real shift; it just
+        # imports without a place, the way every row did before.
+        arena, station = DUTY_PROFILES.get(activity, ("", ""))
 
         for column in PERSON_COLUMNS:
             raw_player = row[idx[column]]
@@ -182,7 +197,7 @@ def build_rows(schedule_path: Path, roster_players: set[str]) -> list[list]:
                 slot_date.year if slot_date is not None else "",
                 activity,
                 arena,
-                "",
+                station,
                 vecka,
                 datum,
                 veckodag,
