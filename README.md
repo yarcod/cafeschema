@@ -9,7 +9,15 @@ Varje morgon kör ett schemalagt jobb på GitHub Actions:
 1. Schemat läses (Excel-fil, Google Kalkylark, eller duty-swap-webbappens
    `/api/schedule`)
 2. Jobbet räknar ut vilka tillfällen som är på gång
-3. Ett mejl skickas till hela gruppen som står på tur
+3. Ett mejl skickas per **pass** till dem som står på just det passet
+
+**Ett mejl per pass, inte per dag.** En dag med tre pass (09–12, 12–15,
+15–18) ger tre mejl, och var och en nämner bara sitt eget gäng — den som får
+mejlet vill veta vem hen står i caféet med, inte vilka som råkar ha pass
+någon annan gång samma dag. Webbappens `/api/schedule` bär tiden, så mejlet
+säger både när passet är och i vilket café. De tabellbaserade källorna
+(Excel, Google Kalkylark) har ingen tidskolumn och ger fortsatt ett mejl per
+datum.
 
 Två sorters mejl kan skickas per tillfälle:
 

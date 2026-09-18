@@ -8,7 +8,7 @@ Occurrence.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from enum import Enum
 
 MAX_LEAD_TIMES = 2
@@ -35,7 +35,17 @@ class Person:
 
 @dataclass(frozen=True)
 class Occurrence:
-    """One scheduled instance of the duty, handled by a group."""
+    """One shift, handled by the group standing there together.
+
+    A shift, not a day: a Saturday holding a 09–12, a 12–15 and a 15–18 is
+    three occurrences, each naming only its own people. Keying this on the
+    date alone was the bug that told every family on duty that Saturday they
+    were on with all the others.
+
+    The times are optional because the tabular sources (xlsx, google_csv)
+    have no time column — such a roster still gets one occurrence per date,
+    and renders exactly as it always did.
+    """
 
     due: date
     people: tuple[Person, ...]
@@ -44,6 +54,13 @@ class Occurrence:
     # The instruction for this particular duty, as the web app links it.
     # None falls back to the document index from config.yaml.
     document_link: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    # Where to turn up. One arena can hold more than one café, so the venue
+    # alone doesn't say where to stand; None when the schedule doesn't say,
+    # or when the shift's rows disagree.
+    venue: str | None = None
+    station: str | None = None
 
     def __post_init__(self) -> None:
         if not self.people:

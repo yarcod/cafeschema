@@ -48,6 +48,7 @@ def render_html(
     headline: str,
     when: str,
     names: str,
+    place: str | None,
     intro: str,
     handover: str | None,
     key_location: str | None,
@@ -74,6 +75,14 @@ def render_html(
         f"{escape(intro)}</div></td></tr>"
     )
 
+    # The place belongs in the same card as the names: both answer "what am I
+    # turning up to", and one arena can hold more than one café.
+    place_line = (
+        f'<div style="font-family:{SANS};font-size:13.5px;line-height:1.5;'
+        f'color:{INK_DIM};padding-top:4px;">{escape(place)}</div>'
+        if place
+        else ""
+    )
     rows.append(
         f'<tr><td style="padding:0 0 16px;">'
         f'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" '
@@ -84,6 +93,7 @@ def render_html(
         f'padding-bottom:5px;">På passet</div>'
         f'<div style="font-family:{SANS};font-size:15px;font-weight:700;color:{INK};">'
         f"{escape(names)}</div>"
+        f"{place_line}"
         f"</td></tr></table></td></tr>"
     )
 

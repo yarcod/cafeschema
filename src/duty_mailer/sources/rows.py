@@ -8,6 +8,13 @@ Wide and tall layouts are handled by one algorithm: each row contributes
 however many people it happens to carry, keyed by its date. A wide row
 contributes several at once; repeated dates in a tall sheet merge. Neither
 shape is special-cased.
+
+One occurrence per date, which holds only as long as a date holds one
+shift. These sheets have no time column, so there is nothing here to split
+a day on — a sheet that did put two shifts on one date would merge them and
+tell both groups they were on together. web_api.py hit exactly that once the
+schedule grew three shifts a day, and keys on the shift instead (see `Shift`
+there); the fix for this module is a `tid` column feeding the same key.
 """
 
 from __future__ import annotations

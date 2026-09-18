@@ -26,6 +26,28 @@ def format_date_sv(d: date) -> str:
     return f"{WEEKDAYS_SV[d.weekday()]} {d.day} {MONTHS_SV[d.month - 1]}"
 
 
+def format_time_range_sv(occ: Occurrence) -> str:
+    """E.g. '12:30–16:30', or '' when the schedule carries no times.
+
+    A date can hold several shifts, so without this two reminders for the
+    same Saturday would arrive looking identical.
+    """
+    if occ.start_time is None or occ.end_time is None:
+        return ""
+    return f"{occ.start_time:%H:%M}–{occ.end_time:%H:%M}"
+
+
+def _when(occ: Occurrence) -> str:
+    """The date, and the shift within it when the schedule says."""
+    return " ".join(filter(None, (format_date_sv(occ.due), format_time_range_sv(occ))))
+
+
+def _place(occ: Occurrence) -> str | None:
+    """Where to turn up — one arena can hold more than one café."""
+    parts = [part for part in (occ.venue, occ.station) if part]
+    return " — ".join(parts) or None
+
+
 def _names(occ: Occurrence) -> str:
     return ", ".join(p.display for p in occ.people)
 
@@ -50,7 +72,9 @@ def render(
     `previous` has already been filtered for adjacency by the caller; if it
     is not None, the handover line is shown.
     """
-    when = format_date_sv(occ.due)
+    when = _when(occ)
+    hours = format_time_range_sv(occ)
+    place = _place(occ)
     lines: list[str] = []
     handover: str | None = None
     key_location: str | None = None
@@ -77,12 +101,18 @@ def render(
             )
             lines.append(handover)
     else:
-        subject = f"Påminnelse — {chore} i morgon"
+        # The hours go in the subject too: a day can hold several shifts, so
+        # "i morgon" alone leaves two identical-looking mails in the inbox.
+        subject = " ".join(filter(None, (f"Påminnelse — {chore} i morgon", hours)))
         headline = f"{chore} i morgon"
         intro = f"Hej! I morgon, {when}, är det er tur för {chore}."
         lines.append(intro)
         lines.append("")
         lines.append(f"Denna gång: {_names(occ)}.")
+
+    if place:
+        lines.append("")
+        lines.append(f"Plats: {place}")
 
     if schedule_link:
         lines.append("")
@@ -99,6 +129,7 @@ def render(
             headline=headline,
             when=when,
             names=_names(occ),
+            place=place,
             intro=intro,
             handover=handover,
             key_location=key_location,

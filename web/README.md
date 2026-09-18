@@ -66,8 +66,15 @@ larmar annars), och `just duties-push` sätter plats och café på de pass som r
 
 `duty_mailer` skickar påminnelsen inför ett pass. Mailet går ut både som HTML (i
 samma formspråk som sajten) och som ren text, och innehåller vilka som står på
-passet, nyckelinfo från förra gången, samt knappar till schemat och till
-**Dokument**.
+passet, var det är, nyckelinfo från förra gången, samt knappar till schemat och
+till **Dokument**.
+
+Ett mail per pass, inte per dag — samma gruppering som **Hela laget** använder
+(`_shifts()` i `schedule_routes.py`: datum, tid, syssla och arena). En lördag
+med tre pass ger tre mail, och inget av dem nämner de andra passens föräldrar.
+`/api/schedule` skickar tiden och platsen som avgör det, så en ändring i hur
+appen grupperar pass måste följas av samma ändring i `Shift` i
+`src/duty_mailer/sources/web_api.py`.
 
 Knappen **Läs instruktionerna** går till passets egen instruktion när appen vet
 vilken det är (`/api/schedule` skickar med `document_url`); annars till listan.

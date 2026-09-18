@@ -1,14 +1,56 @@
-"""Roster read from the duty swap web app's /api/schedule endpoint."""
+"""Roster read from the duty swap web app's /api/schedule endpoint.
+
+One mail per *shift*, not per day. The endpoint sends one row per person
+per station, and grouping those by date alone told everyone rostered that
+Saturday that they were on duty together — when the only people a parent
+needs to know about are the ones standing in the same café at the same
+time. `Shift` is that grouping key, deliberately the same tuple the web
+app's own agenda groups on (`_shifts()` in duty_web/routes/schedule_routes.py),
+so a card on the site and a mail in the inbox describe the same thing.
+"""
 
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, time
+from typing import Any, NamedTuple
 
 import requests
 
 from ..models import Occurrence, Person
 from .rows import RosterError
+
+
+class Shift(NamedTuple):
+    """What makes two rows the same shift. Ordered by when it starts."""
+
+    due: date
+    start_time: time
+    end_time: time
+    duty_name: str
+    venue: str
+
+
+def _text(value: Any) -> str | None:
+    """Blank and missing both mean "not stated", never the empty string."""
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
+
+
+def _parse_time(raw: Any) -> time:
+    """'12:30' or '12:30:00' -> time(12, 30). The app sends minutes."""
+    return time.fromisoformat(str(raw))
+
+
+def _shift_of(entry: dict) -> Shift:
+    return Shift(
+        due=datetime.strptime(entry["date"], "%Y-%m-%d").date(),
+        start_time=_parse_time(entry["start_time"]),
+        end_time=_parse_time(entry["end_time"]),
+        duty_name=str(entry.get("duty_name") or ""),
+        venue=str(entry.get("venue") or ""),
+    )
 
 
 class WebAppApiSource:
@@ -39,12 +81,13 @@ class WebAppApiSource:
             raise RosterError(f"Kunde inte hämta schemat från webbappen: {exc}") from exc
 
         try:
-            by_date: dict[date, list[Person]] = defaultdict(list)
-            seen_emails: dict[date, set[str]] = defaultdict(set)
-            key_locations: dict[date, str | None] = {}
-            document_links: dict[date, str | None] = {}
+            by_shift: dict[Shift, list[Person]] = defaultdict(list)
+            seen_emails: dict[Shift, set[str]] = defaultdict(set)
+            key_locations: dict[Shift, str | None] = {}
+            document_links: dict[Shift, str | None] = {}
+            stations: dict[Shift, set[str | None]] = defaultdict(set)
             for entry in response.json():
-                due = datetime.strptime(entry["date"], "%Y-%m-%d").date()
+                shift = _shift_of(entry)
                 # A duty belongs to a player, and either parent may turn up
                 # for it, so both are reminded. Older app versions sent the
                 # single parent who happened to own the slot instead.
@@ -59,14 +102,14 @@ class WebAppApiSource:
                     if not parent.get("email_notifications", True):
                         continue
                     # One row per station means a parent holding two stations
-                    # on the same date appears twice in the API response;
-                    # dedupe by email within the date, matching rows.py's own
-                    # behavior, so they aren't listed twice or
-                    # double-addressed in the To:.
-                    if email not in seen_emails[due]:
-                        seen_emails[due].add(email)
-                        by_date[due].append(Person(email=email, name=parent["name"]))
-                if due not in key_locations:
+                    # in the same shift appears twice in the API response;
+                    # dedupe by email within the shift so they aren't listed
+                    # twice or double-addressed in the To:.
+                    if email not in seen_emails[shift]:
+                        seen_emails[shift].add(email)
+                        by_shift[shift].append(Person(email=email, name=parent["name"]))
+                stations[shift].add(_text(entry.get("station")))
+                if shift not in key_locations:
                     # The xlsx's key-handoff info travels in the "note" /
                     # "anteckning" column (per the spec's own example row),
                     # and /api/schedule surfaces it as "note" — thread it
@@ -74,26 +117,37 @@ class WebAppApiSource:
                     # first-row-wins behavior, so FORHANDSBESKED emails
                     # don't silently lose it after cutover to this source.
                     note = entry.get("note")
-                    key_locations[due] = note.strip() if isinstance(note, str) else None
-                if due not in document_links:
+                    key_locations[shift] = note.strip() if isinstance(note, str) else None
+                if shift not in document_links:
                     # Which instruction to read is the web app's call — it
-                    # owns the documents. A date holding two different duties
-                    # would get the first one's instruction; the mail is one
-                    # per date, so there is nowhere to put a second link.
-                    # Older app versions don't send the field, and the mail
-                    # then falls back to the document index from config.yaml.
+                    # owns the documents. One shift is one duty, so this is
+                    # now the instruction for exactly the shift being mailed
+                    # about. Older app versions don't send the field, and the
+                    # mail then falls back to the index from config.yaml.
                     link = entry.get("document_url")
-                    document_links[due] = link if isinstance(link, str) and link else None
+                    document_links[shift] = (
+                        link if isinstance(link, str) and link else None
+                    )
 
             return [
                 Occurrence(
-                    due=due,
+                    due=shift.due,
                     people=tuple(people),
                     lead_days=self._default_lead_days,
-                    key_location=key_locations.get(due),
-                    document_link=document_links.get(due),
+                    key_location=key_locations.get(shift),
+                    document_link=document_links.get(shift),
+                    start_time=shift.start_time,
+                    end_time=shift.end_time,
+                    venue=shift.venue or None,
+                    # Only when the shift's rows agree on one: a shift split
+                    # across two stations has no single place to name, and
+                    # guessing at the first would send half the group to the
+                    # wrong counter.
+                    station=next(iter(stations[shift]))
+                    if len(stations[shift]) == 1
+                    else None,
                 )
-                for due, people in sorted(by_date.items())
+                for shift, people in sorted(by_shift.items())
             ]
         except (ValueError, KeyError, TypeError) as exc:
             raise RosterError(f"Kunde inte tolka svaret från webbappen: {exc}") from exc

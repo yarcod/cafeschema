@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 
 from duty_mailer.models import Occurrence, Person, Role
 from duty_mailer.templates import format_date_sv, render
@@ -118,6 +118,70 @@ def test_the_mail_links_to_the_instruction_for_this_duty():
     )
     assert "https://web.example/dokument/MIH.pdf" in msg.body
     assert "https://web.example/dokument/MIH.pdf" in msg.html_body
+
+
+# --- which shift, and where -----------------------------------------------
+#
+# A date can hold several shifts, so a mail that only says the date is
+# ambiguous: two of them would arrive looking identical. And one arena holds
+# two cafés, so "Wallenstam arena" alone doesn't say where to stand.
+
+ARENA_A = Occurrence(
+    due=date(2026, 9, 19),
+    people=(BJORN, CARINA),
+    lead_days=(7, 1),
+    start_time=time(12, 30),
+    end_time=time(16, 30),
+    venue="Wallenstam arena",
+    station="Café Arena A, övre plan",
+)
+
+
+def test_nudge_subject_says_which_shift():
+    msg = render(ARENA_A, Role.PAMINNELSE, None, chore="cafévärd", schedule_link=None)
+    assert msg.subject == "Påminnelse — cafévärd i morgon 12:30–16:30"
+
+
+def test_heads_up_subject_says_which_shift():
+    msg = render(
+        ARENA_A, Role.FORHANDSBESKED, None, chore="cafévärd", schedule_link=None
+    )
+    assert msg.subject == "Er tur snart — cafévärd lördag 19 september 12:30–16:30"
+
+
+def test_body_names_the_time_and_the_cafe():
+    msg = render(ARENA_A, Role.PAMINNELSE, None, chore="cafévärd", schedule_link=None)
+    assert "12:30–16:30" in msg.body
+    assert "Wallenstam arena" in msg.body
+    assert "Café Arena A, övre plan" in msg.body
+
+
+def test_the_html_mail_says_the_same_place():
+    msg = render(ARENA_A, Role.PAMINNELSE, None, chore="cafévärd", schedule_link=None)
+    assert "Café Arena A, övre plan" in msg.html_body
+
+
+def test_a_shift_with_no_time_reads_exactly_as_before():
+    """The tabular sources carry no time column, so their occurrences must
+    keep rendering the way they always did rather than growing an empty
+    dash."""
+    msg = render(THIS_WEEK, Role.PAMINNELSE, None, chore="matchvärd", schedule_link=None)
+    assert msg.subject == "Påminnelse — matchvärd i morgon"
+    assert "–" not in msg.body
+    assert "Plats" not in msg.body
+
+
+def test_a_shift_with_a_venue_but_no_station_names_just_the_venue():
+    occ = Occurrence(
+        due=date(2026, 9, 19),
+        people=(BJORN,),
+        start_time=time(9, 0),
+        end_time=time(12, 0),
+        venue="Mölnlycke idrottshall",
+    )
+    msg = render(occ, Role.PAMINNELSE, None, chore="cafévärd", schedule_link=None)
+    assert "Mölnlycke idrottshall" in msg.body
+    assert "Plats: Mölnlycke idrottshall\n" in msg.body + "\n"
 
 
 def test_the_mail_falls_back_to_the_document_index():

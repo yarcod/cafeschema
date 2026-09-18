@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 
 from duty_mailer.models import Occurrence, Person, Role
 from duty_mailer.scheduling import (
@@ -11,11 +11,19 @@ from duty_mailer.scheduling import (
 )
 
 
-def occ(day: int, *, lead_days: tuple[int, ...] = (1,), month: int = 9) -> Occurrence:
+def occ(
+    day: int,
+    *,
+    lead_days: tuple[int, ...] = (1,),
+    month: int = 9,
+    start: time | None = None,
+    email: str = "a@x.se",
+) -> Occurrence:
     return Occurrence(
         due=date(2026, month, day),
-        people=(Person("a@x.se", "Anna"),),
+        people=(Person(email, "Anna"),),
         lead_days=lead_days,
+        start_time=start,
     )
 
 
@@ -105,6 +113,32 @@ def test_predecessor_beyond_the_gap_limit_is_dropped():
 def test_predecessor_across_a_season_break_is_dropped():
     spring, autumn = occ(20, month=5), occ(5)
     assert previous_occurrence([spring, autumn], autumn, max_gap_days=8) is None
+
+
+def test_predecessor_is_the_last_shift_of_the_previous_duty_day():
+    """A duty day now holds several shifts, so "förra gången" has to pick one
+    of them. It is the group that locked up — the last shift — since they are
+    the ones holding the keys."""
+    morning = occ(12, start=time(9, 0), email="morgon@x.se")
+    midday = occ(12, start=time(12, 0), email="mitt@x.se")
+    evening = occ(12, start=time(15, 0), email="kvall@x.se")
+    today = occ(19, start=time(9, 0))
+
+    predecessor = previous_occurrence(
+        [morning, midday, evening, today], today, max_gap_days=8
+    )
+
+    assert predecessor == evening
+
+
+def test_an_earlier_shift_the_same_day_is_not_a_predecessor():
+    """Deliberate: "förra gången" means the previous duty *day*, so the
+    day's later shifts say nothing about a handover rather than pointing at
+    colleagues a few hours earlier."""
+    morning = occ(19, start=time(9, 0), email="morgon@x.se")
+    midday = occ(19, start=time(12, 0), email="mitt@x.se")
+
+    assert previous_occurrence([morning, midday], midday, max_gap_days=8) is None
 
 
 # --- today_in -------------------------------------------------------------

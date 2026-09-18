@@ -9,7 +9,7 @@ whole season replayable via `--date`.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from .models import Occurrence, Role
@@ -51,7 +51,9 @@ def due_on(
         for offset in occ.lead_days:
             if days_left == offset:
                 due.append((occ, role_for(offset, occ.lead_days)))
-    return sorted(due, key=lambda pair: pair[0].due)
+    # By time within the day too, so a day's several shifts are sent — and
+    # printed by --dry-run — in the order they actually happen.
+    return sorted(due, key=lambda pair: (pair[0].due, pair[0].start_time or time.min))
 
 
 def previous_occurrence(
@@ -60,17 +62,28 @@ def previous_occurrence(
     *,
     max_gap_days: int,
 ) -> Occurrence | None:
-    """The occurrence immediately before `occ`, if it is close enough.
+    """The last shift of the previous duty day, if it is close enough.
 
     Used to tell the incoming group who to collect keys from. Across a
     season break the previous group is not a meaningful handover, so
     anything further back than `max_gap_days` is treated as no predecessor
     at all.
+
+    "Previous duty *day*", not previous shift: a day holding three shifts
+    hands its keys on from whoever locked up, so the day's later shifts
+    deliberately find no predecessor rather than pointing at colleagues who
+    were there a few hours earlier. Among that earlier day's shifts the
+    latest one wins, for the same reason — they are the ones who locked up.
     """
     earlier = [o for o in occurrences if o.due < occ.due]
     if not earlier:
         return None
-    candidate = max(earlier, key=lambda o: o.due)
-    if (occ.due - candidate.due).days > max_gap_days:
+    last_day = max(o.due for o in earlier)
+    if (occ.due - last_day).days > max_gap_days:
         return None
-    return candidate
+    # time.min for a roster with no times at all, which is every tabular
+    # source: one occurrence per date, so there is nothing to order anyway.
+    return max(
+        (o for o in earlier if o.due == last_day),
+        key=lambda o: o.start_time or time.min,
+    )

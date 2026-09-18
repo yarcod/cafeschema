@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 
 import responses
 
@@ -7,22 +7,29 @@ from duty_mailer.sources.web_api import WebAppApiSource
 
 
 @responses.activate
-def test_fetch_builds_one_occurrence_per_date():
+def test_fetch_builds_one_occurrence_per_shift_not_per_date():
+    """A day with three shifts is three separate mails.
+
+    Keying on the date alone put everyone who had *any* shift that day into
+    one occurrence, so the 09–12 pair were told they were on with the 12–15
+    and 15–18 pairs. The recipient's question is "who am I doing this with",
+    and the answer is the other people standing in the café at the same
+    time — nobody else.
+    """
+    def entry(start, end, email):
+        return {
+            "date": "2026-09-19", "start_time": start, "end_time": end,
+            "station": "Café Arena B, nedre plan", "duty_name": "Cafépass",
+            "venue": "Wallenstam arena", "note": None,
+            "parents": [{"name": email.split("@")[0], "email": email}],
+        }
+
     responses.get(
         "https://web.example/api/schedule",
         json=[
-            {
-                "date": "2026-01-16", "start_time": "18:00", "end_time": "21:00",
-                "station": "Cafe", "duty_name": "Arena värdskap",
-                "venue": "Wallenstam arena", "note": "Hämta nyckel",
-                "person": {"name": "Alva Exempel", "email": "tova@exempel.se"},
-            },
-            {
-                "date": "2026-01-16", "start_time": "17:30", "end_time": "20:30",
-                "station": "Entré", "duty_name": "Arena värdskap",
-                "venue": "Wallenstam arena", "note": None,
-                "person": {"name": "Erik L", "email": "erik@exempel.se"},
-            },
+            entry("09:00", "12:00", "tidig@exempel.se"),
+            entry("12:00", "15:00", "mitten@exempel.se"),
+            entry("15:00", "18:00", "sen@exempel.se"),
         ],
         match=[responses.matchers.header_matcher({"X-Api-Key": "secret"})],
     )
@@ -32,14 +39,94 @@ def test_fetch_builds_one_occurrence_per_date():
 
     occurrences = source.fetch()
 
-    assert len(occurrences) == 1
-    occ = occurrences[0]
-    assert occ.due == date(2026, 1, 16)
-    assert {p.email for p in occ.people} == {"tova@exempel.se", "erik@exempel.se"}
+    assert len(occurrences) == 3
+    assert all(occ.due == date(2026, 9, 19) for occ in occurrences)
+    assert [[p.email for p in occ.people] for occ in occurrences] == [
+        ["tidig@exempel.se"], ["mitten@exempel.se"], ["sen@exempel.se"],
+    ]
 
 
 @responses.activate
-def test_fetch_dedupes_a_person_holding_two_stations_on_the_same_date():
+def test_fetch_keeps_everyone_who_shares_one_shift_together():
+    """The flip side: same shift, different families, one mail naming both."""
+    def entry(email):
+        return {
+            "date": "2026-09-19", "start_time": "12:30", "end_time": "16:30",
+            "station": "Café Arena A, övre plan", "duty_name": "Cafépass Arena A",
+            "venue": "Wallenstam arena", "note": None,
+            "parents": [{"name": email.split("@")[0], "email": email}],
+        }
+
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[entry("sofie@exempel.se"), entry("mikaela@exempel.se")],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occurrences = source.fetch()
+
+    assert len(occurrences) == 1
+    assert [p.email for p in occurrences[0].people] == [
+        "sofie@exempel.se", "mikaela@exempel.se",
+    ]
+
+
+@responses.activate
+def test_fetch_carries_the_time_and_place_of_the_shift():
+    """The mail has to say which shift it is about, now that a date can hold
+    several — and which of the arena's two cafés to turn up at."""
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[
+            {
+                "date": "2026-09-19", "start_time": "12:30", "end_time": "16:30",
+                "station": "Café Arena A, övre plan", "duty_name": "Cafépass Arena A",
+                "venue": "Wallenstam arena", "note": None,
+                "parents": [{"name": "Sofie", "email": "sofie@exempel.se"}],
+            },
+        ],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occ = source.fetch()[0]
+
+    assert occ.start_time == time(12, 30)
+    assert occ.end_time == time(16, 30)
+    assert occ.venue == "Wallenstam arena"
+    assert occ.station == "Café Arena A, övre plan"
+
+
+@responses.activate
+def test_fetch_occurrences_are_sorted_by_time_within_a_date():
+    def entry(start, end):
+        return {
+            "date": "2026-09-19", "start_time": start, "end_time": end,
+            "station": "", "duty_name": "Cafépass",
+            "venue": "Wallenstam arena", "note": None,
+            "parents": [{"name": start, "email": f"{start.replace(':', '')}@x.se"}],
+        }
+
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[entry("15:00", "18:00"), entry("09:00", "12:00"), entry("12:00", "15:00")],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    assert [occ.start_time for occ in source.fetch()] == [
+        time(9, 0), time(12, 0), time(15, 0),
+    ]
+
+
+@responses.activate
+def test_fetch_dedupes_a_person_holding_two_stations_in_the_same_shift():
+    """Two stations in one time window is still one shift — the people are
+    in the same place at the same time, so they get one mail, named once."""
     responses.get(
         "https://web.example/api/schedule",
         json=[
@@ -50,7 +137,7 @@ def test_fetch_dedupes_a_person_holding_two_stations_on_the_same_date():
                 "person": {"name": "Alva Exempel", "email": "tova@exempel.se"},
             },
             {
-                "date": "2026-01-16", "start_time": "17:30", "end_time": "20:30",
+                "date": "2026-01-16", "start_time": "18:00", "end_time": "21:00",
                 "station": "Entré", "duty_name": "Arena värdskap",
                 "venue": "Wallenstam arena", "note": None,
                 "person": {"name": "Alva Exempel", "email": "tova@exempel.se"},
@@ -67,6 +154,8 @@ def test_fetch_dedupes_a_person_holding_two_stations_on_the_same_date():
     assert len(occurrences) == 1
     occ = occurrences[0]
     assert [p.email for p in occ.people] == ["tova@exempel.se"]
+    # The two stations disagree, so neither is claimed as the shift's place.
+    assert occ.station is None
 
 
 @responses.activate
@@ -275,7 +364,7 @@ def test_fetch_skips_only_the_parent_who_turned_off_email():
 
 
 @responses.activate
-def test_fetch_dedupes_a_family_holding_two_stations_on_the_same_date():
+def test_fetch_dedupes_a_family_holding_two_stations_in_the_same_shift():
     entry = {
         "date": "2026-01-16", "start_time": "18:00", "end_time": "21:00",
         "station": "Cafe", "duty_name": "Arena värdskap",
