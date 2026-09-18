@@ -64,6 +64,7 @@ def load_name_fixes() -> dict[str, str]:
 DUTY_PROFILES = {
     "Bästkustcupen": ("Mölnlycke idrottshall", "Café"),
     "Cafépass": ("Wallenstam arena", "Café Arena B, nedre plan"),
+    "Cafépass Arena A": ("Wallenstam arena", "Café Arena A, övre plan"),
 }
 
 RENAMED_DUTIES = {

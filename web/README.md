@@ -54,6 +54,7 @@ passet behöver, inte till listan. Kopplingen står i
 |---|---|---|---|
 | Bästkustcupen | Mölnlycke idrottshall | Café | `Cafeteria_Instruktion_MIH.pdf` |
 | Cafépass | Wallenstam arena | Café Arena B, nedre plan | `Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf` |
+| Cafépass Arena A | Wallenstam arena | Café Arena A, övre plan | `Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf` |
 
 Ett pass utan koppling — eller vars fil inte är uppladdad — länkar till listan i
 stället, så knappen aldrig leder till en 404. Lägger man till ett pass i tabellen

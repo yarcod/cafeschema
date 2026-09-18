@@ -13,10 +13,8 @@ everything that reads a Slot sees them without consulting this table. The
 document is the exception — Slot has no column for it, and one would only
 restate what is written here.
 
-The club's remaining instructions (Arena A övre plan, WA C, Hindås,
-Landvetter Pinntorp) are uploaded to the volume but not mapped: no duty is
-held there yet. Arena A would be `station="Café Arena A, övre plan"` with
-"Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf".
+The club's remaining instructions (WA C, Hindås, Landvetter Pinntorp) are
+uploaded to the volume but not mapped: no duty is held there yet.
 """
 
 from __future__ import annotations
@@ -41,6 +39,16 @@ DUTY_PROFILES: dict[str, DutyProfile] = {
         venue="Wallenstam arena",
         station="Café Arena B, nedre plan",
         document="Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf",
+    ),
+    # Same building, other café, other instruction — and the instruction is
+    # looked up by duty name, so it has to be a name of its own rather than a
+    # "Cafépass" that happens to sit elsewhere. The plain name keeps meaning
+    # Arena B: renaming it would change every slot of the season and the
+    # colour parents already recognise it by.
+    "Cafépass Arena A": DutyProfile(
+        venue="Wallenstam arena",
+        station="Café Arena A, övre plan",
+        document="Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf",
     ),
 }
 

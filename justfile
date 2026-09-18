@@ -68,6 +68,11 @@ duties-push:
     printf 'put scripts/rename_duty_profiles.py /tmp/rename_duty_profiles.py\n' | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/rename_duty_profiles.py"
 
+# One-off: rebuild the v38 weekend as a single Arena A pass (idempotent)
+weekend-38-push:
+    printf 'put scripts/reschedule_weekend_38.py /tmp/reschedule_weekend_38.py\n' | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/reschedule_weekend_38.py"
+
 # One-off: move slot ownership from a single parent to the player (idempotent)
 migrate-push file="data/f15_parent_mailing_list.csv":
     printf 'put %s /tmp/roster.csv\nput scripts/migrate_player_ownership.py /tmp/migrate_player_ownership.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
