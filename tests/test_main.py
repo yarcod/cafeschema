@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+import responses
 
 from duty_mailer.__main__ import main, run
 from duty_mailer.config import Config, EmailConfig, ScheduleConfig
 from duty_mailer.email_sender import SendError
 from duty_mailer.models import Occurrence, Person
+from duty_mailer.sources.web_api import WebAppApiSource
 
 CFG = Config(
     schedule=ScheduleConfig(
@@ -130,3 +132,34 @@ def test_main_reports_a_bad_config_without_a_traceback(tmp_path, capsys):
 def test_main_rejects_a_malformed_date(tmp_path):
     with pytest.raises(SystemExit):
         main(["--config", str(tmp_path / "nope.yaml"), "--date", "igår"])
+
+
+@responses.activate
+def test_a_day_with_two_shifts_sends_two_mails_each_to_only_its_own_parents(sent):
+    """End to end from /api/schedule: the 09–12 and 12–15 shifts of one
+    Saturday are two mails, and neither names the other shift's parents."""
+    def entry(start, end, email):
+        return {
+            "date": "2026-09-19", "start_time": start, "end_time": end,
+            "station": "Café Arena A", "duty_name": "Cafépass",
+            "venue": "Wallenstam arena", "note": None, "team": "f15",
+            "parents": [{"name": email.split("@")[0].title(), "email": email}],
+        }
+
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[
+            entry("09:00", "12:00", "tidig@x.se"),
+            entry("12:00", "15:00", "sen@x.se"),
+        ],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="k", default_lead_days=(1,)
+    )
+
+    code = run(CFG, today=date(2026, 9, 18), dry_run=False, password="x", source=source)
+
+    assert code == 0
+    assert [m.to for m in sent] == [("tidig@x.se",), ("sen@x.se",)]
+    assert "Sen" not in sent[0].body and "Tidig" not in sent[1].body
+    assert "09:00–12:00" in sent[0].subject and "12:00–15:00" in sent[1].subject
