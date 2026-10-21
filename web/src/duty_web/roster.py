@@ -146,8 +146,12 @@ def import_roster(session: Session, path: str | Path, *, team_id: int) -> Roster
             f"Ingen grupp med team_id={team_id} finns. Skapa gruppen innan import."
         )
 
+    # Only this team's players: a child of the same name on another team is
+    # a different child, and linking this roster's parents to them would
+    # hand a stranger's family the other team's duties.
     players_by_name = {
-        normalize_name(player.name): player for player in session.query(Player).all()
+        normalize_name(player.name): player
+        for player in session.query(Player).filter(Player.team_id == team_id).all()
     }
     people_by_email = {
         person.email: person for person in session.query(Person).all()

@@ -249,3 +249,28 @@ def test_teams_for_parent_is_empty_for_someone_with_no_child_on_file():
     session.commit()
 
     assert teams_for_parent(session, outsider.id) == []
+
+
+def test_a_child_with_the_same_name_on_another_team_is_another_player(tmp_path):
+    session = make_session()
+    f15 = Team(name="F15", slug="f15", venue="Wallenstam arena")
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add_all([f15, p13])
+    session.commit()
+
+    import_roster(session, write_csv(tmp_path, [
+        ("Hans Ahlqvist", "hans@exempel.se", "Klara Ahlqvist"),
+    ]), team_id=f15.id)
+    import_roster(session, write_csv(tmp_path, [
+        ("Eva Berg", "eva@exempel.se", "Klara Ahlqvist"),
+    ], name="p13.csv"), team_id=p13.id)
+
+    klaras = (
+        session.query(Player)
+        .filter_by(name="Klara Ahlqvist")
+        .order_by(Player.team_id)
+        .all()
+    )
+    assert [p.team_id for p in klaras] == [f15.id, p13.id]
+    assert [p.email for p in klaras[0].parents] == ["hans@exempel.se"]
+    assert [p.email for p in klaras[1].parents] == ["eva@exempel.se"]

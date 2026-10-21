@@ -253,3 +253,26 @@ def test_import_keeps_a_slot_whose_date_is_not_set_yet(tmp_path):
     assert slot.date is None
     assert slot.duty_name == "Arena värdskap vinter"
     assert slot.player.name == "Tova Exempel"
+
+
+def test_importing_one_teams_schedule_leaves_other_teams_slots_alone(tmp_path):
+    session = make_session()
+    f14 = seeded_team(session)
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add(p13)
+    session.flush()
+    session.add(Player(name="Elsa Berg", team_id=p13.id))
+    session.commit()
+
+    import_schedule(session, write_xlsx(tmp_path, [
+        [2026, "Arena värdskap", "Wallenstam arena", "Cafe", 3, "2026-01-16",
+         "Fredag", "18:00-21:00", "Tova Exempel", None],
+    ]), team_id=f14.id)
+    import_schedule(session, write_xlsx(tmp_path, [
+        [2026, "Kioskpass", "Mölnlycke idrottshall", "Kiosk", 3, "2026-01-17",
+         "Lördag", "09:00-12:00", "Elsa Berg", None],
+    ], name="p13.xlsx"), team_id=p13.id)
+
+    assert sorted(slot.team_id for slot in session.query(Slot).all()) == sorted(
+        [f14.id, p13.id]
+    )

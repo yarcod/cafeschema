@@ -82,7 +82,9 @@ def import_schedule(session: Session, path: str | Path, *, team_id: int) -> int:
             "Inga spelare finns i gruppen. Importera laglistan (roster) före schemat."
         )
 
-    session.query(Slot).delete()
+    # Replaces this team's season only; other teams' slots and swaps are
+    # none of this file's business.
+    session.query(Slot).filter(Slot.team_id == team_id).delete()
     session.flush()
 
     count = 0
