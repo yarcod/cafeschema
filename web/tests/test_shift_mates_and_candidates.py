@@ -1,6 +1,6 @@
 """Who you share a shift with, and who is therefore not a swap partner."""
 
-from datetime import date, time
+from datetime import date, time, timedelta
 
 import pytest
 
@@ -12,8 +12,13 @@ from .conftest import make_family
 
 @pytest.fixture
 def shift(session_factory, seeded):
-    """Two families on one shift, plus a third family on a different shift."""
+    """Two families on one shift, plus a third family on a different shift.
+
+    Dated relative to today: Mina pass lists upcoming shifts only, so a
+    fixed date would silently drop out of the page once it had passed.
+    """
     session = session_factory()
+    soon = date.today() + timedelta(days=14)
     team = seeded["team"]
     mate_player = make_family(
         session, team, "Alva Andersson",
@@ -24,7 +29,7 @@ def shift(session_factory, seeded):
     )
 
     shared = dict(
-        team_id=team.id, date=date(2026, 10, 3), start_time=time(9, 0),
+        team_id=team.id, date=soon, start_time=time(9, 0),
         end_time=time(12, 0), station="", duty_name="Bästkustcupen",
         venue="Wallenstam arena",
     )
@@ -33,7 +38,7 @@ def shift(session_factory, seeded):
         **shared, player_id=mate_player.id, child_name="Alva Andersson"
     )
     elsewhere = Slot(
-        team_id=team.id, date=date(2026, 10, 10), start_time=time(15, 0),
+        team_id=team.id, date=soon + timedelta(days=7), start_time=time(15, 0),
         end_time=time(18, 0), station="", duty_name="Bästkustcupen",
         venue="Wallenstam arena", player_id=other_player.id,
         child_name="Bea Bengtsson",
@@ -74,7 +79,8 @@ def test_swap_candidates_exclude_every_slot_of_a_shift_mates_family(shift):
     family on this shift twice over, whichever parent turns up."""
     session = shift["session"]
     mates_other_slot = Slot(
-        team_id=shift["mine"].team_id, date=date(2026, 11, 7), start_time=time(9, 0),
+        team_id=shift["mine"].team_id,
+        date=shift["mine"].date + timedelta(days=35), start_time=time(9, 0),
         end_time=time(12, 0), station="", duty_name="Åby Julmarknad",
         venue="", player_id=shift["mate_player"].id,
     )
