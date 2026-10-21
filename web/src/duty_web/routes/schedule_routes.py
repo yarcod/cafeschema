@@ -177,6 +177,7 @@ def api_schedule():
     # on email_notifications individually.
     return jsonify([
         {
+            "team": slot.team.slug,
             "date": slot.date.isoformat(),
             "start_time": slot.start_time.isoformat(timespec="minutes"),
             "end_time": slot.end_time.isoformat(timespec="minutes"),

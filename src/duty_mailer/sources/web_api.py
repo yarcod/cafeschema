@@ -29,6 +29,9 @@ class Shift(NamedTuple):
     end_time: time
     duty_name: str
     venue: str
+    # Two teams can staff the same duty at the same time and place; they
+    # are still two shifts, with their own parents and instruction.
+    team: str
 
 
 def _text(value: Any) -> str | None:
@@ -50,6 +53,8 @@ def _shift_of(entry: dict) -> Shift:
         end_time=_parse_time(entry["end_time"]),
         duty_name=str(entry.get("duty_name") or ""),
         venue=str(entry.get("venue") or ""),
+        # Older app versions don't send the team.
+        team=str(entry.get("team") or ""),
     )
 
 

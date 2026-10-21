@@ -435,3 +435,34 @@ def test_fetch_leaves_the_instruction_link_unset_when_the_app_has_none():
     )
 
     assert source.fetch()[0].document_link is None
+
+
+@responses.activate
+def test_identical_shifts_of_two_teams_are_mailed_separately():
+    """F15 and P13 can both staff the Cafépass at the same time and place.
+    Without the team in the key they became one mail: both teams' parents in
+    To:, told they share the shift, and one team got the other's instruction."""
+    def entry(team, email):
+        return {
+            "date": "2026-09-19", "start_time": "12:30", "end_time": "16:30",
+            "station": "Café Arena A", "duty_name": "Cafépass",
+            "venue": "Wallenstam arena", "note": None, "team": team,
+            "document_url": f"https://web.example/dokument/{team}/Cafe.pdf",
+            "parents": [{"name": email.split("@")[0], "email": email}],
+        }
+
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[entry("f15", "f15@exempel.se"), entry("p13", "p13@exempel.se")],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    occurrences = source.fetch()
+
+    assert len(occurrences) == 2
+    by_email = {occ.people[0].email: occ for occ in occurrences}
+    assert all(len(occ.people) == 1 for occ in occurrences)
+    assert by_email["f15@exempel.se"].document_link.endswith("/f15/Cafe.pdf")
+    assert by_email["p13@exempel.se"].document_link.endswith("/p13/Cafe.pdf")

@@ -101,3 +101,13 @@ def test_api_links_a_teams_shift_to_that_teams_own_instruction(
 
     cup = next(r for r in rows if r["duty_name"] == "Bästkustcupen")
     assert cup["document_url"].endswith("/dokument/p13/Cafeteria_Instruktion_MIH.pdf")
+
+
+def test_api_schedule_rows_carry_the_team_slug(client, seeded):
+    """Two teams can staff the same café at the same time; the mailer needs
+    the team to keep their shifts apart."""
+    response = client.get("/api/schedule", headers={"X-Api-Key": "test-api-key"})
+
+    rows = response.get_json()
+    assert rows
+    assert all(row["team"] == seeded["team"].slug for row in rows)
