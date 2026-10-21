@@ -1,7 +1,7 @@
 """Swedish email rendering.
 
-The whole group goes in To: (spec D4) so that reply-all reaches everyone on
-duty — coordinating the handover is the point of the heads-up message.
+The mail names people, never their addresses: the group is sent as Bcc, and
+a parent's address is not ours to show other parents.
 """
 
 from __future__ import annotations
@@ -48,14 +48,12 @@ def _place(occ: Occurrence) -> str | None:
     return " — ".join(parts) or None
 
 
+NAMELESS = "(namn saknas)"
+
+
 def _names(occ: Occurrence) -> str:
-    return ", ".join(p.display for p in occ.people)
-
-
-def _contacts(occ: Occurrence) -> str:
-    return ", ".join(
-        f"{p.display} ({p.email})" if p.name else p.email for p in occ.people
-    )
+    """Names only. A person without one gets a placeholder, never the address."""
+    return ", ".join(p.name or NAMELESS for p in occ.people)
 
 
 def render(
@@ -96,8 +94,7 @@ def render(
                 lines.append(f"Nycklarna: {key_location}")
             handover = (
                 f"Förra gången ({format_date_sv(previous.due)}) var det "
-                f"{_contacts(previous)} — hör av er till dem om nycklar "
-                "eller frågor."
+                f"{_names(previous)}."
             )
             lines.append(handover)
     else:

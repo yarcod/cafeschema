@@ -80,6 +80,9 @@ def test_handover_details_reach_the_html_version():
 
     assert "Hämta nyckel helgen innan" in message.html_body
     assert "Bo Bengtsson" in message.html_body
+    assert "b@exempel.se" not in message.html_body
+    assert "b@exempel.se" not in message.body
+    assert "a@exempel.se" not in message.html_body
 
 
 def test_sent_mail_is_multipart_with_both_parts(monkeypatch):

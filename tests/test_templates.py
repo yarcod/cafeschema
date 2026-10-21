@@ -13,6 +13,14 @@ THIS_WEEK = Occurrence(due=date(2026, 9, 19), people=(BJORN, CARINA), lead_days=
 LAST_WEEK = Occurrence(due=date(2026, 9, 12), people=(ANNA,))
 
 
+def assert_no_addresses(msg, *addresses):
+    """Subject, plain body and HTML body must not show anyone's address."""
+    for address in addresses:
+        assert address not in msg.subject
+        assert address not in msg.body
+        assert address not in msg.html_body
+
+
 def test_format_date_sv():
     assert format_date_sv(date(2026, 9, 19)) == "lördag 19 september"
 
@@ -54,7 +62,7 @@ def test_heads_up_names_the_previous_group_when_adjacent():
         THIS_WEEK, Role.FORHANDSBESKED, LAST_WEEK, chore="matchvärd", schedule_link=None
     )
     assert "Anna Svensson" in msg.body
-    assert "anna@x.se" in msg.body
+    assert_no_addresses(msg, "anna@x.se", "bjorn@x.se", "carina@x.se")
 
 
 def test_heads_up_omits_the_handover_when_there_is_no_predecessor():
@@ -89,10 +97,23 @@ def test_schedule_link_is_omitted_when_not_configured():
     assert "Schema:" not in msg.body
 
 
-def test_people_without_names_show_their_address():
+def test_people_without_names_get_a_placeholder_not_their_address():
     occ = Occurrence(due=date(2026, 9, 19), people=(Person("x@x.se"),))
     msg = render(occ, Role.PAMINNELSE, None, chore="matchvärd", schedule_link=None)
-    assert "x@x.se" in msg.body
+    assert "(namn saknas)" in msg.body
+    assert_no_addresses(msg, "x@x.se")
+
+
+def test_a_nameless_previous_person_is_not_revealed_by_address():
+    previous = Occurrence(
+        due=date(2026, 9, 12), people=(ANNA, Person("anonym@x.se")), key_location="Kansliet"
+    )
+    msg = render(
+        THIS_WEEK, Role.FORHANDSBESKED, previous, chore="matchvärd", schedule_link=None
+    )
+    assert "Anna Svensson" in msg.body
+    assert "(namn saknas)" in msg.body
+    assert_no_addresses(msg, "anna@x.se", "anonym@x.se")
 
 
 def test_body_has_no_leading_or_trailing_blank_lines():
