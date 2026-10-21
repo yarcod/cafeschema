@@ -164,8 +164,8 @@ Kim Exempel,kim@exempel.se,Alva Exempel
 > repot (`.gitignore`). Detsamma gäller `data/name_fixes.json`, som håller reda
 > på spelare som stavas olika i de två filerna.
 
-- **Lägga till en familj** — lägg till en rad. Nästa `schedule-build` + `schedule-push <slug>`
-  plockar upp den.
+- **Lägga till en familj** — lägg till en rad. Kör `just schedule-build <källa> <kontaktlista> <utfil>`
+  och sedan `just schedule-push <slug> <fil>` igen, så plockas den upp.
 - **Två föräldrar i samma familj** — lägg båda på varsin rad. Den som står först får
   passen; den andra kan alltid vidarebefordra inloggningslänken.
 - **Namnet stavas olika i de två filerna** — lägg till stavningen i
