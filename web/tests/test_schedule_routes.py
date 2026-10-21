@@ -181,3 +181,18 @@ def test_someone_with_no_child_on_any_team_sees_no_calendar(
 
     assert response.status_code == 200
     assert "Arena värdskap" not in response.get_data(as_text=True)
+
+
+def test_mine_names_the_team_on_each_pass_for_a_parent_on_two(client, seeded, second_team):
+    _login(client, seeded["person"])
+
+    body = client.get("/").get_data(as_text=True)
+
+    assert '<span class="slot-team">P13</span>' in body
+    assert '<span class="slot-team">F14 Blå</span>' in body
+
+
+def test_mine_leaves_the_team_out_for_a_parent_on_one(client, seeded, second_team):
+    _login(client, seeded["other_parent"])
+
+    assert "slot-team" not in client.get("/").get_data(as_text=True)

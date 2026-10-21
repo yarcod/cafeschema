@@ -37,12 +37,16 @@ def mine():
     mates_by_slot = {
         slot.id: shift_mates_for(session, slot) for slot in slots + undated_slots
     }
+    # With children on two teams the cards would otherwise look alike;
+    # with one team the name is noise.
+    show_team = len(teams_for_parent(session, int(current_user.id))) > 1
     return render_template(
         "mine.html",
         slots=slots,
         undated_slots=undated_slots,
         candidates_by_slot=candidates_by_slot,
         mates_by_slot=mates_by_slot,
+        show_team=show_team,
     )
 
 

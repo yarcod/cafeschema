@@ -788,3 +788,4 @@ a.day:hover { border-color: var(--ink); }
 .team-switch a { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink-dim); text-decoration: none; }
 .team-switch a.active { background: var(--ink); color: var(--surface); }
 .doc-group { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); margin: 18px 0 6px; }
+.slot-team { display: block; font-size: 11px; font-weight: 700; color: var(--ink-dim); margin-bottom: 4px; }

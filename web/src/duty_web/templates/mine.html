@@ -20,7 +20,7 @@
         <span class="day-name">{{ slot.date|weekday_sv|capitalize }}</span>
         <span class="day-num">{{ slot.date|short_date_sv }}</span>
       </div>
-      <div class="slot-station"><span class="{{ slot.duty_name|chip_class }}">{{ slot.duty_name }}</span></div>
+      <div class="slot-station">{% if show_team %}<span class="slot-team">{{ slot.team.name }}</span>{% endif %}<span class="{{ slot.duty_name|chip_class }}">{{ slot.duty_name }}</span></div>
     </div>
     <div class="slot-meta">
       <span class="time">{{ slot.start_time.strftime("%H:%M") }}–{{ slot.end_time.strftime("%H:%M") }}</span>
@@ -102,7 +102,7 @@
           <span class="day-name">Datum bestäms senare</span>
           <span class="day-num">—</span>
         </div>
-        <div class="slot-station"><span class="{{ slot.duty_name|chip_class }}">{{ slot.duty_name }}</span></div>
+        <div class="slot-station">{% if show_team %}<span class="slot-team">{{ slot.team.name }}</span>{% endif %}<span class="{{ slot.duty_name|chip_class }}">{{ slot.duty_name }}</span></div>
       </div>
       <div class="slot-meta">
         <span class="time">{{ slot.start_time.strftime("%H:%M") }}–{{ slot.end_time.strftime("%H:%M") }}</span>
