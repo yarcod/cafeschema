@@ -12,6 +12,7 @@ from duty_web.roster import (
     parent_owns_slot,
     parents_of_player,
     player_ids_for_parent,
+    teams_for_parent,
 )
 
 ROSTER = [
@@ -36,7 +37,7 @@ def write_csv(tmp_path, rows, name="roster.csv"):
 
 
 def with_team(session):
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.commit()
     return team
@@ -218,3 +219,33 @@ def test_nobody_owns_an_unassigned_slot(tmp_path):
     assert not parent_owns_slot(session, hans.id, None)
     assert notifiable_emails(session, unassigned) == []
     assert parent_names_of_slot(session, unassigned) == "Ledigt"
+
+
+def test_teams_for_parent_lists_each_of_their_teams_once(tmp_path):
+    session = make_session()
+    f15 = Team(name="F15", slug="f15", venue="Wallenstam arena")
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    f11 = Team(name="F11", slug="f11", venue="Wallenstam arena")
+    session.add_all([f15, p13, f11])
+    session.commit()
+    # Two siblings on F15, one child on P13, nobody on F11.
+    import_roster(session, write_csv(tmp_path, [
+        ("Dan Edh", "dan@exempel.se", "Klara Edh"),
+        ("Dan Edh", "dan@exempel.se", "Moa Edh"),
+    ]), team_id=f15.id)
+    import_roster(session, write_csv(tmp_path, [
+        ("Dan Edh", "dan@exempel.se", "Elsa Edh"),
+    ], name="p13.csv"), team_id=p13.id)
+    dan = session.query(Person).filter_by(email="dan@exempel.se").one()
+
+    assert [team.slug for team in teams_for_parent(session, dan.id)] == ["f15", "p13"]
+
+
+def test_teams_for_parent_is_empty_for_someone_with_no_child_on_file():
+    session = make_session()
+    with_team(session)
+    outsider = Person(name="Ola", email="ola@exempel.se")
+    session.add(outsider)
+    session.commit()
+
+    assert teams_for_parent(session, outsider.id) == []

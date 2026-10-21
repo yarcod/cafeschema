@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from sqlalchemy import Column, ForeignKey, Table
+from sqlalchemy import Column, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -28,6 +28,9 @@ class Team(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
+    # Short, lowercase name used in URLs (?lag=f15), as the team's own
+    # instruction folder under the documents dir, and in the just recipes.
+    slug: Mapped[str] = mapped_column(unique=True)
     venue: Mapped[str]
 
 
@@ -47,7 +50,7 @@ class Person(Base):
 
 
 class Player(Base):
-    """A child on the team. Duties are assigned to the player, not a parent.
+    """A child on a team. Duties are assigned to the player, not a parent.
 
     The roster (data/f15_parent_mailing_list.csv, exported from 360Player)
     is authoritative for who exists and who their parents are; the schedule
@@ -55,9 +58,12 @@ class Player(Base):
     """
 
     __tablename__ = "players"
+    # A name is only unique within a team: two teams in the club can each
+    # have an Elsa Berg, and they are different children.
+    __table_args__ = (UniqueConstraint("team_id", "name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
 
     team: Mapped[Team] = relationship()

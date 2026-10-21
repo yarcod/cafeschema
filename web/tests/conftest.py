@@ -77,7 +77,7 @@ def seeded(session_factory):
     exactly the same slots.
     """
     session = session_factory()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     player = make_family(

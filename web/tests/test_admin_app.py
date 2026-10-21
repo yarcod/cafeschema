@@ -38,7 +38,7 @@ def csv_bytes(rows):
 
 
 def seeded_team(session, player_name="Tova Exempel"):
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     player = Player(name=player_name, team_id=team.id)
@@ -89,7 +89,7 @@ def test_admin_import_reports_seed_errors_as_400():
 def test_admin_roster_creates_players_and_parents():
     app, session_factory = make_app_and_session()
     session = session_factory()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.commit()
     client = app.test_client()
@@ -113,7 +113,7 @@ def test_admin_roster_creates_players_and_parents():
 def test_admin_roster_reports_a_bad_file_as_400():
     app, session_factory = make_app_and_session()
     session = session_factory()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.commit()
     client = app.test_client()

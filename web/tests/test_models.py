@@ -25,7 +25,7 @@ def _player(session, team, name, *parent_emails):
 
 def test_slot_links_team_and_player():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     player = _player(session, team, "Tova Exempel", "tova@exempel.se")
@@ -52,7 +52,7 @@ def test_slot_links_team_and_player():
 
 def test_slot_can_be_unfilled():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
 
@@ -100,7 +100,7 @@ def test_foreign_keys_are_enforced_on_sqlite(tmp_path):
 
 def test_swap_request_defaults_to_pending():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     a = _player(session, team, "Klara", "a@exempel.se")
@@ -128,3 +128,52 @@ def test_swap_request_defaults_to_pending():
     session.commit()
 
     assert session.get(SwapRequest, request.id).status == "pending"
+
+
+def _new_session():
+    engine = make_engine(":memory:")
+    init_db(engine)
+    return make_session_factory(engine)()
+
+
+def _two_teams(session):
+    f15 = Team(name="F15", slug="f15", venue="Wallenstam arena")
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add_all([f15, p13])
+    session.flush()
+    return f15, p13
+
+
+def test_two_teams_may_each_have_a_player_with_the_same_name():
+    session = _new_session()
+    f15, p13 = _two_teams(session)
+    session.add_all([
+        Player(name="Elsa Berg", team_id=f15.id),
+        Player(name="Elsa Berg", team_id=p13.id),
+    ])
+    session.commit()
+
+    assert session.query(Player).count() == 2
+
+
+def test_a_team_cannot_have_two_players_with_the_same_name():
+    session = _new_session()
+    f15, _ = _two_teams(session)
+    session.add_all([
+        Player(name="Elsa Berg", team_id=f15.id),
+        Player(name="Elsa Berg", team_id=f15.id),
+    ])
+
+    with pytest.raises(IntegrityError):
+        session.commit()
+
+
+def test_team_slugs_are_unique():
+    session = _new_session()
+    session.add_all([
+        Team(name="F15", slug="f15", venue="Wallenstam arena"),
+        Team(name="F15 igen", slug="f15", venue="Wallenstam arena"),
+    ])
+
+    with pytest.raises(IntegrityError):
+        session.commit()

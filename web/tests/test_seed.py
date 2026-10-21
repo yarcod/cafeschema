@@ -21,7 +21,7 @@ def make_session():
 
 def seeded_team(session, players=("Tova Exempel",)):
     """A team with a roster already imported — import_schedule's precondition."""
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     for index, name in enumerate(players):
@@ -148,7 +148,7 @@ def test_import_rejects_a_nonexistent_team_id_without_wiping_existing_data(tmp_p
 def test_import_refuses_to_run_before_the_roster_has_been_imported(tmp_path):
     """Otherwise the whole season imports unassigned and nobody can act."""
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.commit()
     path = write_xlsx(tmp_path, [

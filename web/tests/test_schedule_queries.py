@@ -35,7 +35,7 @@ def _slot(team_id, player_id, day, station="Cafe"):
 
 def test_slots_for_parent_are_chronological_and_scoped_to_their_player():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     a = _family(session, team, "Klara", "a@exempel.se")
@@ -54,7 +54,7 @@ def test_slots_for_parent_are_chronological_and_scoped_to_their_player():
 
 def test_both_parents_of_a_player_see_the_same_slots():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     player = _family(session, team, "Klara", "hans@exempel.se", "lena@exempel.se")
@@ -69,7 +69,7 @@ def test_both_parents_of_a_player_see_the_same_slots():
 
 def test_a_parent_with_no_player_sees_nothing():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     stranger = Person(name="Utomstående", email="x@exempel.se")
     session.add_all([team, stranger])
     session.flush()
@@ -82,7 +82,7 @@ def test_a_parent_with_no_player_sees_nothing():
 
 def test_slots_for_team_month_includes_unfilled_slots():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     session.add_all([
@@ -99,7 +99,7 @@ def test_slots_for_team_month_includes_unfilled_slots():
 
 def test_slots_for_team_month_excludes_other_months():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     session.add(_slot(team.id, None, 16))
@@ -117,7 +117,7 @@ def test_slots_for_team_month_excludes_other_months():
 
 def test_swaps_pending_for_parent_returns_only_pending_requests_targeting_them():
     session = make_session()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     a = _family(session, team, "Klara", "a@exempel.se")

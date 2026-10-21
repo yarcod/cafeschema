@@ -43,6 +43,23 @@ def player_ids_for_parent(session: Session, person_id: int) -> set[int]:
     return {row[0] for row in rows}
 
 
+def teams_for_parent(session: Session, person_id: int) -> list[Team]:
+    """Every team this parent has a child on, each once, by name.
+
+    A parent's only way into a team is through a child on it, so this is
+    also the list of teams whose calendar and documents they may see.
+    """
+    return (
+        session.query(Team)
+        .join(Player, Player.team_id == Team.id)
+        .join(parent_players, parent_players.c.player_id == Player.id)
+        .filter(parent_players.c.person_id == person_id)
+        .distinct()
+        .order_by(Team.name)
+        .all()
+    )
+
+
 def parents_of_player(session: Session, player_id: int) -> list[Person]:
     player = session.get(Player, player_id)
     return list(player.parents) if player is not None else []

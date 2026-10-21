@@ -28,7 +28,7 @@ def make_fixtures():
     engine = make_engine(":memory:")
     init_db(engine)
     session = make_session_factory(engine)()
-    team = Team(name="F14 Blå", venue="Wallenstam arena")
+    team = Team(name="F14 Blå", slug="f14-bla", venue="Wallenstam arena")
     session.add(team)
     session.flush()
     a = _family(session, team, "Klara", "a@exempel.se", "a2@exempel.se")
