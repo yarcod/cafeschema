@@ -26,10 +26,11 @@ def send(message: Message, cfg: EmailConfig, *, password: str) -> None:
 
     email = EmailMessage()
     email["From"] = cfg.from_address
-    # Bcc, with To pointing at ourselves: a parent's address is not ours to
-    # show other parents. send_message() delivers to Bcc and strips the header.
-    email["To"] = cfg.from_address
-    email["Bcc"] = ", ".join(message.to)
+    # A parent's address is not ours to show other parents, so the group only
+    # travels in the SMTP envelope. To is the empty RFC 5322 group: it shows
+    # the mail wasn't addressed to anyone visible, and delivers nowhere —
+    # pointing it at our own address would copy every reminder to that inbox.
+    email["To"] = "undisclosed-recipients:;"
     email["Subject"] = message.subject
     if cfg.reply_to:
         email["Reply-To"] = cfg.reply_to
@@ -41,7 +42,7 @@ def send(message: Message, cfg: EmailConfig, *, password: str) -> None:
         with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port) as server:
             server.starttls()
             server.login(cfg.smtp_user, password)
-            server.send_message(email)
+            server.send_message(email, to_addrs=list(message.to))
     except (smtplib.SMTPException, OSError) as exc:
         # Never str(exc): SMTPRecipientsRefused is the dict of refused
         # addresses and server replies often echo <addr>. Actions logs are public.

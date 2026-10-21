@@ -94,7 +94,7 @@ def test_sent_mail_is_multipart_with_both_parts(monkeypatch):
         def __exit__(self, *args): return False
         def starttls(self): pass
         def login(self, *args): pass
-        def send_message(self, email): sent["email"] = email
+        def send_message(self, email, from_addr=None, to_addrs=None): sent["email"] = email
 
     monkeypatch.setattr("duty_mailer.email_sender.smtplib.SMTP", FakeSMTP)
     cfg = EmailConfig(

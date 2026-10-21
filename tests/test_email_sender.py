@@ -29,6 +29,7 @@ class FakeSMTP:
         self.started_tls = False
         self.login_args = None
         self.sent = []
+        self.envelopes = []
         FakeSMTP.instances.append(self)
 
     def __enter__(self):
@@ -43,8 +44,9 @@ class FakeSMTP:
     def login(self, user, password):
         self.login_args = (user, password)
 
-    def send_message(self, msg):
+    def send_message(self, msg, from_addr=None, to_addrs=None):
         self.sent.append(msg)
+        self.envelopes.append(to_addrs)
 
 
 @pytest.fixture
@@ -65,7 +67,7 @@ def test_connects_with_starttls_and_logs_in(smtp):
 def test_sends_to_the_whole_group(smtp):
     send(MSG, CFG, password="hemligt")
     sent = smtp.instances[0].sent[0]
-    assert sent["Bcc"] == "a@x.se, b@x.se"
+    assert smtp.instances[0].envelopes[0] == ["a@x.se", "b@x.se"]
     assert sent["From"] == "robot@example.com"
     assert sent["Subject"] == "Påminnelse — matchvärd i morgon"
     assert sent["Reply-To"] == "styrelsen@example.com"
@@ -98,17 +100,17 @@ def test_smtp_failures_are_wrapped(monkeypatch):
 
 
 def test_recipients_are_hidden_from_each_other(smtp):
-    """A parent's address is not ours to show other parents: the group goes
-    in Bcc and To is the sender's own address."""
+    """A parent's address is not ours to show other parents. The group is
+    only in the envelope; To is the empty undisclosed-recipients group, so no
+    mailbox of ours gets a copy either."""
     send(MSG, CFG, password="hemligt")
     assert len(smtp.instances) == 1
     assert len(smtp.instances[0].sent) == 1
     sent = smtp.instances[0].sent[0]
-    assert sent["To"] == CFG.from_address
+    assert sent["To"] == "undisclosed-recipients:;"
     assert sent["Cc"] is None
-    for address in MSG.to:
-        assert address not in sent["To"]
-        assert address in sent["Bcc"]
+    assert sent["Bcc"] is None
+    assert smtp.instances[0].envelopes[0] == list(MSG.to)
 
 
 def test_send_error_does_not_leak_addresses(monkeypatch):
@@ -142,7 +144,7 @@ def test_send_error_hides_addresses_echoed_by_smtp_exceptions(monkeypatch, exc):
     assert "2 mottagare" in text
 
 
-def test_bcc_is_stripped_from_the_wire_but_still_delivered(monkeypatch):
+def test_recipients_are_off_the_wire_but_still_delivered(monkeypatch):
     """Let the real send_message flatten the message; capture what would be
     handed to the server."""
     wire = {}
@@ -176,7 +178,8 @@ def test_bcc_is_stripped_from_the_wire_but_still_delivered(monkeypatch):
 
     from_addr, to_addrs, raw = wire["args"]
     assert from_addr == CFG.from_address
-    assert {"a@x.se", "b@x.se"} <= set(to_addrs)
+    # Exactly the shift's parents: the sender's own mailbox gets no copy.
+    assert to_addrs == ["a@x.se", "b@x.se"]
     text = raw.decode() if isinstance(raw, bytes) else raw
     assert "a@x.se" not in text and "b@x.se" not in text
     assert "Bcc" not in text
