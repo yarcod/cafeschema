@@ -40,6 +40,9 @@ just docs-push ~/Downloads/Kiosk_instruktioner.pdf   # laddar upp
 just docs-list                                       # visar vad som ligger där
 ```
 
+`just docs-push fil.pdf` delas av hela klubben, medan `just docs-push fil.pdf p13`
+bara gäller P13. Ett lags egen fil går före en delad fil med samma namn.
+
 Filerna ligger på Fly-volymen under `/data/dokument`, så en ny fil behöver ingen
 driftsättning. Tillåtna filtyper: `pdf`, `png`, `jpg`, `txt`, `md`. Filnamnet blir
 rubriken i listan — `Kiosk_instruktioner.pdf` visas som "Kiosk instruktioner".
@@ -107,13 +110,13 @@ appen importerar. Två steg:
 
 ```bash
 just schedule-build data/Bemanningsschema_26_27_Hans_260913_v2.xlsx   # bygger data/seed_sasong_26_27.xlsx
-just schedule-push                                                     # importerar till den driftsatta appen
+just schedule-push f15                                                 # importerar till den driftsatta appen
 ```
 
 `schedule-build` varnar om någon spelare i schemat saknar kontaktuppgifter.
 Sådana pass importeras ändå, men som **Ledigt** — ingen tilldelas dem.
 
-`schedule-push` **ersätter alla pass**. Föräldrarna själva behålls (de matchas på
+`schedule-push` **ersätter alla pass för det laget** (andra lags pass rörs inte). Föräldrarna själva behålls (de matchas på
 e-post), så ingen blir utloggad och ingens inställningar försvinner.
 
 ### Tränarens fil
@@ -152,7 +155,7 @@ Kim Exempel,kim@exempel.se,Alva Exempel
 > repot (`.gitignore`). Detsamma gäller `data/name_fixes.json`, som håller reda
 > på spelare som stavas olika i de två filerna.
 
-- **Lägga till en familj** — lägg till en rad. Nästa `schedule-build` + `schedule-push`
+- **Lägga till en familj** — lägg till en rad. Nästa `schedule-build` + `schedule-push <slug>`
   plockar upp den.
 - **Två föräldrar i samma familj** — lägg båda på varsin rad. Den som står först får
   passen; den andra kan alltid vidarebefordra inloggningslänken.
@@ -248,18 +251,17 @@ just web-ssh         # skal på maskinen
    fly ips allocate-v4 -a duty-swap-webapp --shared
    ```
 
-5. **Skapa laget** (engångsåtgärd — inget annat skapar en `Team`-rad):
+5. **Skapa laget** (en gång per lag — inget annat skapar en `Team`-rad):
 
    ```bash
-   fly ssh console -a duty-swap-webapp -C "python -c \"
-   from duty_web.db import init_db, make_engine, make_session_factory
-   from duty_web.models import Team
-   e = make_engine('/data/duty.db'); init_db(e)
-   s = make_session_factory(e)()
-   s.add(Team(name='F15', venue='Wallenstam arena')); s.commit()\""
+   just team-add f15 F15
    ```
 
-6. **Fyll på schemat:** `just schedule-build <tränarens fil>` och `just schedule-push`
+   Slugen (`f15`) är lagets korta namn i adresser, dokumentmappen och i
+   `just roster-push <slug>` / `just schedule-push <slug>`. Bara a–z, 0–9
+   och bindestreck.
+
+6. **Fyll på schemat:** `just schedule-build <tränarens fil>` och `just schedule-push f15`
 
 7. **Valfritt — egen domän:**
 

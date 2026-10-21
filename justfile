@@ -52,16 +52,21 @@ web-roster file="data/f15_parent_mailing_list.csv" team_id="1":
 web-seed file="data/seed_sasong_26_27.xlsx" team_id="1":
     curl -s -F "team_id={{team_id}}" -F "file=@{{file}}" http://localhost:8081/admin/import
 
-# Sync the deployed app's players and parents from the 360Player contact list
-# (additive — run this whenever a new parent registers, and before schedule-push)
-roster-push file="data/f15_parent_mailing_list.csv":
-    printf 'put %s /tmp/roster.csv\nput scripts/remote_roster_import.py /tmp/remote_roster_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_roster_import.py"
+# Create a team in the deployed app (once per team). The slug names it in every other recipe
+team-add slug name venue="Wallenstam arena":
+    printf 'put scripts/remote_team_add.py /tmp/remote_team_add.py\n' | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_team_add.py {{slug}} '{{name}}' '{{venue}}'"
 
-# Import a built seed file into the deployed app (replaces every slot)
-schedule-push file="data/seed_sasong_26_27.xlsx":
+# Sync a team's players and parents from its 360Player contact list
+# (additive — run this whenever a new parent registers, and before schedule-push)
+roster-push team="f15" file="data/f15_parent_mailing_list.csv":
+    printf 'put %s /tmp/roster.csv\nput scripts/remote_roster_import.py /tmp/remote_roster_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_roster_import.py {{team}}"
+
+# Import a built seed file into the deployed app (replaces that team's slots only)
+schedule-push team="f15" file="data/seed_sasong_26_27.xlsx":
     printf 'put %s /tmp/seed.xlsx\nput scripts/remote_import.py /tmp/remote_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_import.py"
+    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_import.py {{team}}"
 
 # Rename duties and fill in venue/café on the slots already imported (idempotent)
 duties-push:
@@ -82,24 +87,25 @@ migrate-push file="data/f15_parent_mailing_list.csv":
 db-pull out="/tmp/duty-copy.db":
     printf 'get /data/duty.db %s\n' "{{out}}" | fly ssh sftp shell -a duty-swap-webapp
 
-# Upload a document (pdf/png/jpg/txt/md) to the deployed app's Dokument page
-docs-push file:
-    fly ssh console -a duty-swap-webapp -C "mkdir -p /data/dokument"
-    printf 'put %s /data/dokument/%s\n' "{{file}}" "$(basename {{file}})" | fly ssh sftp shell -a duty-swap-webapp
+# Upload a document. No team: shared by the whole club. With a team slug: that team only,
+# and it wins over a shared file of the same name for that team
+docs-push file team="":
+    fly ssh console -a duty-swap-webapp -C "mkdir -p /data/dokument/{{team}}"
+    printf 'put %s /data/dokument/{{ if team == "" { "" } else { team + "/" } }}%s\n' "{{file}}" "$(basename {{file}})" | fly ssh sftp shell -a duty-swap-webapp
 
-# List the documents currently on the deployed app's volume
+# List the documents on the deployed app's volume, shared and per team
 docs-list:
-    fly ssh console -a duty-swap-webapp -C "ls -la /data/dokument"
+    fly ssh console -a duty-swap-webapp -C "ls -laR /data/dokument"
 
 # Add a throwaway test parent + pass to the deployed app (for trying swaps)
-test-fixture-add email:
+test-fixture-add email team="f15":
     printf 'put scripts/test_swap_fixture.py /tmp/test_swap_fixture.py\n' | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/test_swap_fixture.py add {{email}}"
+    fly ssh console -a duty-swap-webapp -C "python /tmp/test_swap_fixture.py add {{email}} {{team}}"
 
 # Remove the throwaway test parent, pass and any swap requests they are in
-test-fixture-remove email:
+test-fixture-remove email team="f15":
     printf 'put scripts/test_swap_fixture.py /tmp/test_swap_fixture.py\n' | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/test_swap_fixture.py remove {{email}}"
+    fly ssh console -a duty-swap-webapp -C "python /tmp/test_swap_fixture.py remove {{email}} {{team}}"
 
 # Deploy the web app to Fly.io
 web-deploy:

@@ -1,6 +1,8 @@
 """Import the 360Player contact list into the deployed app. Runs ON the Fly machine.
 
 Uploaded and executed by `just roster-push`; not meant to run locally.
+
+    python /tmp/remote_roster_import.py <slug>
 The deployed image has no curl and no sqlite3 binary, so this calls the
 importer directly instead of going through the localhost admin endpoint.
 
@@ -15,8 +17,9 @@ from __future__ import annotations
 import sys
 
 from duty_web.db import init_db, make_engine, make_session_factory
-from duty_web.models import Person, Player, Team
+from duty_web.models import Person, Player
 from duty_web.roster import RosterError, import_roster
+from duty_web.teams import TeamError, team_by_slug
 
 DB_PATH = "/data/duty.db"
 ROSTER_PATH = "/tmp/roster.csv"
@@ -27,9 +30,13 @@ def main() -> int:
     init_db(engine)
     session = make_session_factory(engine)()
 
-    team = session.query(Team).first()
-    if team is None:
-        print("Ingen grupp finns i databasen — skapa en först.", file=sys.stderr)
+    if len(sys.argv) != 2:
+        print("Ange lagets slug, t.ex. f15.", file=sys.stderr)
+        return 1
+    try:
+        team = team_by_slug(session, sys.argv[1])
+    except TeamError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     try:

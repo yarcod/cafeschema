@@ -7,8 +7,8 @@ and the magic-link login can only be exercised against an address that is
 actually in the schedule. Everything it creates is labelled TEST so nobody
 mistakes it for a real duty, and `remove` deletes all of it.
 
-    python test_swap_fixture.py add <e-postadress>
-    python test_swap_fixture.py remove <e-postadress>
+    python test_swap_fixture.py add <e-postadress> <slug>
+    python test_swap_fixture.py remove <e-postadress> <slug>
 
 Adressen måste vara en du själv kan läsa mail på — poängen är att kunna
 klicka i inloggningslänken och bytesmailen på riktigt.
@@ -21,6 +21,7 @@ from datetime import date, time
 
 from duty_web.db import init_db, make_engine, make_session_factory
 from duty_web.models import Person, Player, Slot, SwapRequest, Team
+from duty_web.teams import TeamError, team_by_slug
 
 DB_PATH = "/data/duty.db"
 
@@ -110,7 +111,7 @@ def remove(session, team: Team, email: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 3 or sys.argv[1] not in ("add", "remove"):
+    if len(sys.argv) != 4 or sys.argv[1] not in ("add", "remove"):
         print(__doc__)
         return 1
     email = sys.argv[2]
@@ -118,9 +119,10 @@ def main() -> int:
     engine = make_engine(DB_PATH)
     init_db(engine)
     session = make_session_factory(engine)()
-    team = session.query(Team).first()
-    if team is None:
-        print("Ingen grupp finns i databasen.", file=sys.stderr)
+    try:
+        team = team_by_slug(session, sys.argv[3])
+    except TeamError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
 
     (add if sys.argv[1] == "add" else remove)(session, team, email)
