@@ -76,6 +76,18 @@ def _add_team_slug(connection: sqlite3.Connection, slug: str) -> bool:
     return True
 
 
+def _violations(connection: sqlite3.Connection) -> set[tuple]:
+    """(child table, rowid, parent table) for every dangling reference.
+
+    The constraint index is left out: a rebuilt table may number its foreign
+    keys differently without a single reference having changed.
+    """
+    return {
+        (table, rowid, parent)
+        for table, rowid, parent, _ in connection.execute("PRAGMA foreign_key_check")
+    }
+
+
 def _rebuild(connection: sqlite3.Connection, engine, table: str) -> None:
     """Recreate a table from its model's DDL, keeping every row and id.
 
@@ -84,7 +96,10 @@ def _rebuild(connection: sqlite3.Connection, engine, table: str) -> None:
     migrate_player_ownership.py). The DDL comes from the model, so the
     result can't drift from what create_all makes on a fresh database.
     Foreign keys are off for the swap: other tables reference this one by
-    id, and the ids are kept, which foreign_key_check confirms afterwards.
+    id, and the ids are kept, which foreign_key_check confirms before the
+    swap is committed. Only violations that are new compared with before the
+    swap count: a dangling reference that was already there is warned about,
+    never blamed on (or blocking) the migration.
     """
     model_table = Base.metadata.tables[table]
     ddl = str(CreateTable(model_table).compile(engine)).strip()
@@ -94,6 +109,7 @@ def _rebuild(connection: sqlite3.Connection, engine, table: str) -> None:
     ddl = ddl.replace(prefix, f"CREATE TABLE {table}_new (", 1)
     columns = ", ".join(column.name for column in model_table.columns)
 
+    baseline = _violations(connection)
     connection.execute("PRAGMA foreign_keys=OFF")
     connection.execute("BEGIN")
     try:
@@ -103,14 +119,26 @@ def _rebuild(connection: sqlite3.Connection, engine, table: str) -> None:
         )
         connection.execute(f"DROP TABLE {table}")
         connection.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+        new = _violations(connection) - baseline
+        if new:
+            connection.execute("ROLLBACK")
+            connection.execute("PRAGMA foreign_keys=ON")
+            raise SystemExit(
+                f"Trasiga referenser efter ombyggnad av {table}, ändringen ångrades: "
+                f"{sorted(new)}"
+            )
         connection.execute("COMMIT")
+    except SystemExit:
+        raise
     except Exception:
         connection.execute("ROLLBACK")
         raise
 
-    violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-    if violations:
-        raise SystemExit(f"Trasiga referenser efter ombyggnad av {table}: {violations}")
+    if baseline:
+        print(
+            f"Varning: {len(baseline)} trasiga referenser fanns redan före "
+            f"migreringen och lämnades som de var: {sorted(baseline)}"
+        )
     connection.execute("PRAGMA foreign_keys=ON")
 
 

@@ -143,3 +143,18 @@ def test_several_teams_without_slug_abort_and_change_nothing(migration, old_db):
     assert connection.execute("SELECT slug FROM teams").fetchall() == [(None,), (None,)]
     assert connection.execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall() == before
     connection.close()
+
+
+def test_a_dangling_reference_from_before_does_not_block_the_migration(
+    migration, old_db, capsys
+):
+    connection = sqlite3.connect(old_db)  # foreign keys are off here
+    connection.execute("INSERT INTO parent_players (person_id, player_id) VALUES (99, 7)")
+    connection.commit()
+    connection.close()
+
+    assert migration.main(["x", str(old_db), "f15"]) == 0
+
+    assert "Varning" in capsys.readouterr().out
+    assert _session(old_db).get(Team, 1).slug == "f15"
+    assert migration.main(["x", str(old_db), "f15"]) == 0
