@@ -5,8 +5,8 @@ whole database, so a child on a second team couldn't share a name with one
 on the first. After: teams.slug is NOT NULL and UNIQUE, and players are
 unique per (team_id, name).
 
-Runs against a database file, either on the Fly machine (via
-`just multi-team-migrate-push`) or on a downloaded copy for a rehearsal:
+Runs against a database file, either on the Fly machine (upload it and run
+it over `fly ssh console`) or on a copy from `just db-pull` for a rehearsal:
 
     python scripts/migrate_multi_team.py [db_path] [slug]
 

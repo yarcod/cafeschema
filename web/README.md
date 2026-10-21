@@ -185,12 +185,6 @@ just docs-list                                                     # kontrollera
 
 Kör `roster-push` före `schedule-push`: importen kräver att spelarna finns.
 
-**Engångskörning vid övergången till flera lag.** Direkt efter den driftsättning
-som inför flera lag, kör `just multi-team-migrate-push f15` (ger det befintliga
-laget en slug och gör spelarnamn unika per lag). Öva först på en kopia:
-`just db-pull`, och kör `scripts/migrate_multi_team.py` mot kopian. Kör den
-två gånger; andra gången ska den bara skriva "fanns redan".
-
 ## Testa bytesflödet
 
 En slask-förälder och ett testpass kan läggas in för att prova hela kedjan —
@@ -211,8 +205,6 @@ Det försvinner också vid nästa `schedule-push` för laget, eftersom den ersä
 just web-install     # skapar web/.venv
 just web-test        # kör testsviten
 just web-run         # startar appen på http://localhost:8080
-just web-admin       # importsidan, endast localhost, på :8081
-just web-seed        # importerar en byggd seed-fil till den lokalt körande appen
 ```
 
 ## Drift

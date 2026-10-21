@@ -2,7 +2,7 @@ web_env := "SECRET_KEY=dev DB_PATH=:memory: SCHEDULE_API_KEY=dev SMTP_HOST=local
 
 # List all recipes
 default:
-    just --list
+    just --list --unsorted
 
 # --- duty_mailer (root package) ---
 
@@ -36,29 +36,16 @@ web-test:
 web-run:
     cd web && {{web_env}} uv run python -m duty_web
 
-# Start the localhost-only admin import app locally (http://localhost:8081)
-web-admin:
-    cd web && {{web_env}} uv run python -m duty_web.admin_main
-
 # Build a seed file from the trainer's schedule + the parent contact list
 schedule-build source contacts out:
     uv run python scripts/build_seed_xlsx.py {{source}} {{contacts}} {{out}}
-
-# Sync players and parents into a running local admin app from the contact list
-web-roster file="data/f15_parent_mailing_list.csv" team_id="1":
-    curl -s -F "team_id={{team_id}}" -F "file=@{{file}}" http://localhost:8081/admin/roster
-
-# Seed a running local admin app from a built seed file (team_id defaults to 1)
-web-seed file="data/seed_sasong_26_27.xlsx" team_id="1":
-    curl -s -F "team_id={{team_id}}" -F "file=@{{file}}" http://localhost:8081/admin/import
 
 # Create a team in the deployed app (once per team). The slug names it in every other recipe
 team-add slug name venue="Wallenstam arena":
     printf 'put scripts/remote_team_add.py /tmp/remote_team_add.py\n' | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_team_add.py {{slug}} '{{name}}' '{{venue}}'"
 
-# Sync a team's players and parents from its 360Player contact list
-# (additive — run this whenever a new parent registers, and before schedule-push)
+# Sync a team's players and parents from its 360Player contact list (additive; run before schedule-push)
 roster-push team="f15" file=("data/" + team + "_parent_mailing_list.csv"):
     printf 'put %s /tmp/roster.csv\nput scripts/remote_roster_import.py /tmp/remote_roster_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_roster_import.py {{team}}"
@@ -73,27 +60,11 @@ duties-push:
     printf 'put scripts/rename_duty_profiles.py /tmp/rename_duty_profiles.py\n' | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/rename_duty_profiles.py"
 
-# One-off: rebuild the v38 weekend as a single Arena A pass (idempotent)
-weekend-38-push:
-    printf 'put scripts/reschedule_weekend_38.py /tmp/reschedule_weekend_38.py\n' | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/reschedule_weekend_38.py"
-
-# One-off: move slot ownership from a single parent to the player (idempotent)
-migrate-push file="data/f15_parent_mailing_list.csv":
-    printf 'put %s /tmp/roster.csv\nput scripts/migrate_player_ownership.py /tmp/migrate_player_ownership.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/migrate_player_ownership.py"
-
-# One-off: team slugs and per-team player names (idempotent). Run right after the deploy that adds them
-multi-team-migrate-push slug="f15":
-    printf 'put scripts/migrate_multi_team.py /tmp/migrate_multi_team.py\n' | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/migrate_multi_team.py /data/duty.db {{slug}}"
-
 # Download the deployed database to rehearse a migration against a copy
 db-pull out="/tmp/duty-copy.db":
     printf 'get /data/duty.db %s\n' "{{out}}" | fly ssh sftp shell -a duty-swap-webapp
 
-# Upload a document. No team: shared by the whole club. With a team slug: that team only,
-# and it wins over a shared file of the same name for that team
+# Upload a document: no team = shared by the club; a team slug = that team only (overrides a shared file of the same name)
 docs-push file team="":
     fly ssh console -a duty-swap-webapp -C "mkdir -p /data/dokument/{{team}}"
     printf 'put %s /data/dokument/{{ if team == "" { "" } else { team + "/" } }}%s\n' "{{file}}" "$(basename {{file}})" | fly ssh sftp shell -a duty-swap-webapp
