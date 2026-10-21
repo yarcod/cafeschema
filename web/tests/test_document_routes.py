@@ -219,8 +219,9 @@ def test_another_teams_document_is_not_found_by_any_route(
         "/dokument/p13/Kiosk_P13.pdf",
         "/dokument/p13%2FKiosk_P13.pdf",
         "/dokument/f14-bla/../p13/Kiosk_P13.pdf",
+        "/dokument/f14-bla/..%2Fp13%2FKiosk_P13.pdf",
     ):
-        assert client.get(url).status_code in (403, 404), url
+        assert client.get(url).status_code == 404, url
 
 
 def test_document_list_groups_team_and_shared_documents(
