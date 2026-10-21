@@ -109,9 +109,14 @@ Schemat kommer från tränarens Excel-fil och byggs om till en enklare fil som
 appen importerar. Två steg:
 
 ```bash
-just schedule-build data/Bemanningsschema_26_27_Hans_260913_v2.xlsx   # bygger data/seed_sasong_26_27.xlsx
-just schedule-push f15                                                 # importerar till den driftsatta appen
+just schedule-build data/Bemanningsschema_26_27_Hans_260913_v2.xlsx data/f15_parent_mailing_list.csv data/seed_sasong_26_27.xlsx
+just schedule-push f15 data/seed_sasong_26_27.xlsx   # importerar till den driftsatta appen
 ```
+
+`schedule-build` (källa, kontaktlista, utfil) och `schedule-push` (lag, fil) har
+inga standardvärden, så att ett annat lags körning aldrig skriver över F15:s
+seed-fil eller importerar den till fel lag. `roster-push <slug>` använder
+`data/<slug>_parent_mailing_list.csv` om ingen fil anges.
 
 `schedule-build` varnar om någon spelare i schemat saknar kontaktuppgifter.
 Sådana pass importeras ändå, men som **Ledigt** — ingen tilldelas dem.
@@ -258,10 +263,10 @@ just web-ssh         # skal på maskinen
    ```
 
    Slugen (`f15`) är lagets korta namn i adresser, dokumentmappen och i
-   `just roster-push <slug>` / `just schedule-push <slug>`. Bara a–z, 0–9
+   `just roster-push <slug>` / `just schedule-push <slug> <fil>`. Bara a–z, 0–9
    och bindestreck.
 
-6. **Fyll på schemat:** `just schedule-build <tränarens fil>` och `just schedule-push f15`
+6. **Fyll på schemat:** `just schedule-build <tränarens fil> <kontaktlista> <utfil>` och `just schedule-push f15 <utfil>`
 
 7. **Valfritt — egen domän:**
 

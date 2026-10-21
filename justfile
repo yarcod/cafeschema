@@ -41,7 +41,7 @@ web-admin:
     cd web && {{web_env}} uv run python -m duty_web.admin_main
 
 # Build a seed file from the trainer's schedule + the parent contact list
-schedule-build source contacts="data/f15_parent_mailing_list.csv" out="data/seed_sasong_26_27.xlsx":
+schedule-build source contacts out:
     uv run python scripts/build_seed_xlsx.py {{source}} {{contacts}} {{out}}
 
 # Sync players and parents into a running local admin app from the contact list
@@ -59,12 +59,12 @@ team-add slug name venue="Wallenstam arena":
 
 # Sync a team's players and parents from its 360Player contact list
 # (additive — run this whenever a new parent registers, and before schedule-push)
-roster-push team="f15" file="data/f15_parent_mailing_list.csv":
+roster-push team="f15" file=("data/" + team + "_parent_mailing_list.csv"):
     printf 'put %s /tmp/roster.csv\nput scripts/remote_roster_import.py /tmp/remote_roster_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_roster_import.py {{team}}"
 
 # Import a built seed file into the deployed app (replaces that team's slots only)
-schedule-push team="f15" file="data/seed_sasong_26_27.xlsx":
+schedule-push team file:
     printf 'put %s /tmp/seed.xlsx\nput scripts/remote_import.py /tmp/remote_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_import.py {{team}}"
 
