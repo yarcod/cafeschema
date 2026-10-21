@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from .html_template import render_html
-from .models import Message, Occurrence, Role
+from .models import Message, Occurrence, Person, Role
 
 # Hardcoded rather than locale-derived: CI runners have no sv_SE locale.
 MONTHS_SV = (
@@ -51,9 +51,16 @@ def _place(occ: Occurrence) -> str | None:
 NAMELESS = "(namn saknas)"
 
 
+def _public_name(person: Person) -> str:
+    """Some rows have the address stored as the name; that is no name."""
+    if not person.name or "@" in person.name:
+        return NAMELESS
+    return person.name
+
+
 def _names(occ: Occurrence) -> str:
     """Names only. A person without one gets a placeholder, never the address."""
-    return ", ".join(p.name or NAMELESS for p in occ.people)
+    return ", ".join(_public_name(p) for p in occ.people)
 
 
 def render(

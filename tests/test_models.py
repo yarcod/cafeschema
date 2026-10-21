@@ -7,12 +7,8 @@ import pytest
 from duty_mailer.models import Occurrence, Person, Role
 
 
-def test_person_display_prefers_name():
-    assert Person(email="a@x.se", name="Anna").display == "Anna"
-
-
-def test_person_display_falls_back_to_email():
-    assert Person(email="a@x.se").display == "a@x.se"
+def test_person_has_no_display_that_could_fall_back_to_the_address():
+    assert not hasattr(Person(email="a@x.se"), "display")
 
 
 def test_occurrence_defaults_to_single_lead_day():

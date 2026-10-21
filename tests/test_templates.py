@@ -104,6 +104,14 @@ def test_people_without_names_get_a_placeholder_not_their_address():
     assert_no_addresses(msg, "x@x.se")
 
 
+def test_an_address_stored_as_the_name_is_treated_as_nameless():
+    """Production has parents whose name was filled in with their address."""
+    occ = Occurrence(due=date(2026, 9, 19), people=(Person("x@x.se", "x@x.se"),))
+    msg = render(occ, Role.PAMINNELSE, None, chore="matchvärd", schedule_link=None)
+    assert "(namn saknas)" in msg.body
+    assert_no_addresses(msg, "x@x.se")
+
+
 def test_a_nameless_previous_person_is_not_revealed_by_address():
     previous = Occurrence(
         due=date(2026, 9, 12), people=(ANNA, Person("anonym@x.se")), key_location="Kansliet"

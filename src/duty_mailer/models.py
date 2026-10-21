@@ -27,11 +27,6 @@ class Person:
     name: str | None = None
     external_id: str | None = None
 
-    @property
-    def display(self) -> str:
-        """Name if we have one, otherwise the address."""
-        return self.name or self.email
-
 
 @dataclass(frozen=True)
 class Occurrence:

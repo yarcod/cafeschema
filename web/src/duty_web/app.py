@@ -17,6 +17,7 @@ from .dates import MONTHS_SV, long_date_sv, short_date_sv, weekday_sv
 from .models import Person
 from .schedule_queries import swaps_pending_for_parent
 from .session_scope import close_session, get_session
+from .roster import public_name
 
 
 class LoginUser(UserMixin):
@@ -111,6 +112,7 @@ def create_app(config: AppConfig) -> Flask:
     # (see dates.py) — strftime("%A") would silently render in English on
     # any host without an sv_SE locale installed, including the deployed
     # container.
+    app.jinja_env.filters["public_name"] = public_name
     app.jinja_env.filters["weekday_sv"] = weekday_sv
     app.jinja_env.filters["short_date_sv"] = short_date_sv
     app.jinja_env.filters["long_date_sv"] = long_date_sv

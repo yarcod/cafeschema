@@ -72,6 +72,20 @@ def parents_of_slot(session: Session, slot: Slot | None) -> list[Person]:
     return parents_of_player(session, slot.player_id)
 
 
+NAMELESS = "(namn saknas)"
+
+
+def public_name(person: Person) -> str:
+    """A parent's name as other parents may see it.
+
+    Never the address: some rows were created with the address standing in
+    for a name, and that must not reach anyone else.
+    """
+    if not person.name or "@" in person.name:
+        return NAMELESS
+    return person.name
+
+
 def parent_names_of_slot(session: Session, slot: Slot | None) -> str:
     """How to name a slot's owners in prose: 'Hans Ahlqvist & Lena Ahlqvist'.
 
@@ -80,7 +94,7 @@ def parent_names_of_slot(session: Session, slot: Slot | None) -> str:
     """
     parents = parents_of_slot(session, slot)
     if parents:
-        return " & ".join(parent.name for parent in parents)
+        return " & ".join(public_name(parent) for parent in parents)
     if slot is not None and slot.player is not None:
         return slot.player.name
     return "Ledigt"
@@ -187,7 +201,7 @@ def import_roster(session: Session, path: str | Path, *, team_id: int) -> Roster
 
         person = people_by_email.get(email)
         if person is None:
-            person = Person(name=parent_name or email, email=email)
+            person = Person(name=parent_name, email=email)
             session.add(person)
             session.flush()
             people_by_email[email] = person

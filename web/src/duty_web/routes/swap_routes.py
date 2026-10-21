@@ -10,7 +10,7 @@ from ..clock import utcnow
 from ..dates import short_date_sv
 from ..models import Person, Slot, SwapRequest
 from ..notifications import send_swap_accepted, send_swap_declined, send_swap_proposed
-from ..roster import notifiable_emails, parent_names_of_slot
+from ..roster import notifiable_emails, parent_names_of_slot, public_name
 from ..schedule_queries import outgoing_swaps_for_parent, swaps_pending_for_parent
 from ..session_scope import get_session as _session
 from ..swaps import SwapError, accept_swap, decline_swap, propose_swap
@@ -81,7 +81,7 @@ def create():
     # Either parent may propose on the family's behalf, so the mail names
     # the one who actually clicked rather than the household.
     proposer = session.get(Person, int(current_user.id))
-    proposer_name = proposer.name if proposer is not None else ""
+    proposer_name = public_name(proposer) if proposer is not None else ""
 
     for raw_target_id in target_slot_ids:
         try:
@@ -131,7 +131,7 @@ def accept(swap_id: int):
         original_proposer_slot = session.get(Slot, swap_request.proposer_slot_id)
         proposer_emails = notifiable_emails(session, original_proposer_slot)
     accepter = session.get(Person, int(current_user.id))
-    accepter_name = accepter.name if accepter is not None else ""
+    accepter_name = public_name(accepter) if accepter is not None else ""
 
     try:
         request_row = accept_swap(
@@ -172,7 +172,7 @@ def decline(swap_id: int):
     if recipients:
         send_swap_declined(
             recipients,
-            decliner_name=decliner.name if decliner is not None else "",
+            decliner_name=public_name(decliner) if decliner is not None else "",
             your_slot=_format_slot(proposer_slot),
             link=url_for("schedule.mine", _external=True),
         )

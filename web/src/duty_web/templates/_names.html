@@ -8,7 +8,7 @@
    parent side lists both of them. #}
 {% macro slot_parents(slot) -%}
 {%- if slot.player and slot.player.parents -%}
-{{ slot.player.parents | map(attribute="name") | join(" & ") }}
+{{ slot.player.parents | map("public_name") | join(" & ") }}
 {%- elif slot.player -%}
 {{ slot.player.name }}
 {%- else -%}
