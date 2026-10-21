@@ -77,3 +77,27 @@ def test_a_duty_with_no_instruction_has_no_document_url(client, seeded):
     ).get_json()
 
     assert payload[0]["document_url"] is None
+
+
+def test_api_links_a_teams_shift_to_that_teams_own_instruction(
+    client, seeded, second_team, session_factory, documents_dir
+):
+    from datetime import time
+
+    from duty_web.models import Slot
+
+    (documents_dir / "p13").mkdir()
+    (documents_dir / "p13" / "Cafeteria_Instruktion_MIH.pdf").write_bytes(b"%PDF")
+    session = session_factory()
+    session.add(Slot(
+        team_id=second_team["team"].id, date=seeded["future_slot"].date,
+        start_time=time(15, 0), end_time=time(17, 0), station="Café",
+        duty_name="Bästkustcupen", venue="Mölnlycke idrottshall",
+        child_name="Nils Främling", player_id=second_team["stranger"].id,
+    ))
+    session.commit()
+
+    rows = client.get("/api/schedule", headers={"X-Api-Key": "test-api-key"}).get_json()
+
+    cup = next(r for r in rows if r["duty_name"] == "Bästkustcupen")
+    assert cup["document_url"].endswith("/dokument/p13/Cafeteria_Instruktion_MIH.pdf")

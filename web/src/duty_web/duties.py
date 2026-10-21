@@ -10,8 +10,11 @@ app, the reminder mail, and the next schedule import) — so it lives here.
 render time: scripts/build_seed_xlsx.py fills them when a schedule is built,
 and scripts/rename_duty_profiles.py backfills the slots already imported. So
 everything that reads a Slot sees them without consulting this table. The
-document is the exception — Slot has no column for it, and one would only
-restate what is written here.
+document is the exception — Slot has no column for it, and one would
+only restate what is written here. It is a bare filename: the document
+routes look for it in the slot's team folder first and then among the
+club's shared documents, so a team can have its own version of an
+instruction without a profile of its own.
 
 The club's remaining instructions (WA C, Hindås, Landvetter Pinntorp) are
 uploaded to the volume but not mapped: no duty is held there yet.

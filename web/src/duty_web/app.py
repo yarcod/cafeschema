@@ -143,9 +143,9 @@ def create_app(config: AppConfig) -> Flask:
     # Att göra points at the one instruction that duty needs; the filter is
     # registered here rather than beside the others because it lives with the
     # document routes, which can't be imported before the app exists.
-    from .routes.document_routes import document_url_for_duty
+    from .routes.document_routes import document_url_for_slot
 
-    app.jinja_env.filters["duty_document_url"] = document_url_for_duty
+    app.jinja_env.filters["slot_document_url"] = document_url_for_slot
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(document_bp)

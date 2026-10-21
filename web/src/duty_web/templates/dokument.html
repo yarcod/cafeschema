@@ -1,15 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Caféschema — Dokument{% endblock %}
-{% block content %}
-<div class="section-head">
-  <h2>Dokument</h2>
-  <span class="count">{{ documents|length }} st</span>
-</div>
-
-<p class="empty-note">Instruktioner och annat som är bra att läsa inför ett pass.</p>
-
-{% for document in documents %}
-  <a class="doc-row" href="{{ url_for('documents.download', filename=document.filename) }}">
+{% macro doc_row(document) %}
+  <a class="doc-row" href="{{ document.url }}">
     <span class="doc-kind">{{ document.suffix }}</span>
     <span class="doc-text">
       <span class="doc-name">{{ document.name }}</span>
@@ -17,7 +9,24 @@
     </span>
     <span class="doc-arrow" aria-hidden="true">→</span>
   </a>
-{% else %}
-  <p class="empty-state">Inga dokument uppladdade ännu.</p>
+{% endmacro %}
+{% block content %}
+<div class="section-head">
+  <h2>Dokument</h2>
+  <span class="count">{{ total }} st</span>
+</div>
+
+<p class="empty-note">Instruktioner och annat som är bra att läsa inför ett pass.</p>
+
+{% for section in team_sections %}
+  <h3 class="doc-group">{{ section.team.name }}</h3>
+  {% for document in section.documents %}{{ doc_row(document) }}{% endfor %}
 {% endfor %}
+
+{% if team_sections and shared %}<h3 class="doc-group">Gemensamma för klubben</h3>{% endif %}
+{% for document in shared %}{{ doc_row(document) }}{% endfor %}
+
+{% if not total %}
+  <p class="empty-state">Inga dokument uppladdade ännu.</p>
+{% endif %}
 {% endblock %}

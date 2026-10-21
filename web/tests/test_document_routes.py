@@ -150,3 +150,122 @@ def test_an_instruction_link_can_be_built_for_a_mail(app):
         "https://duty-swap-webapp.fly.dev/dokument/"
         "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"
     )
+
+
+def _login(client, person):
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(person.id)
+        sess["_fresh"] = True
+
+
+def _team_file(documents_dir, slug, name, content=b"%PDF-1.4 team"):
+    folder = documents_dir / slug
+    folder.mkdir(exist_ok=True)
+    (folder / name).write_bytes(content)
+
+
+def test_a_teams_own_instruction_wins_over_the_shared_one(app, documents_dir):
+    from duty_web.routes.document_routes import document_url_for_duty
+
+    _team_file(documents_dir, "p13", "Cafeteria_Instruktion_MIH.pdf")
+
+    with app.test_request_context():
+        assert document_url_for_duty("Bästkustcupen", "p13") == (
+            "/dokument/p13/Cafeteria_Instruktion_MIH.pdf"
+        )
+        assert document_url_for_duty("Bästkustcupen", "f14-bla") == (
+            "/dokument/Cafeteria_Instruktion_MIH.pdf"
+        )
+
+
+def test_a_team_without_its_own_copy_uses_the_shared_instruction(app):
+    from duty_web.routes.document_routes import document_url_for_duty
+
+    with app.test_request_context():
+        assert document_url_for_duty("Cafépass", "p13") == (
+            "/dokument/Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"
+        )
+
+
+def test_an_instruction_only_one_team_has_is_not_offered_to_the_others(
+    app, documents_dir
+):
+    from duty_web.routes.document_routes import document_url_for_duty
+
+    (documents_dir / "Cafeteria_Instruktion_MIH.pdf").unlink()
+    _team_file(documents_dir, "p13", "Cafeteria_Instruktion_MIH.pdf")
+
+    with app.test_request_context():
+        assert document_url_for_duty("Bästkustcupen", "p13").startswith("/dokument/p13/")
+        assert document_url_for_duty("Bästkustcupen", "f14-bla") == "/dokument"
+
+
+def test_a_parent_can_download_their_teams_document(
+    client, seeded, second_team, documents_dir
+):
+    _team_file(documents_dir, "p13", "Kiosk_P13.pdf")
+    _login(client, seeded["person"])
+
+    assert client.get("/dokument/p13/Kiosk_P13.pdf").status_code == 200
+
+
+def test_another_teams_document_is_not_found_by_any_route(
+    client, seeded, second_team, documents_dir
+):
+    _team_file(documents_dir, "p13", "Kiosk_P13.pdf")
+    _login(client, seeded["other_parent"])  # F14 Blå only
+
+    for url in (
+        "/dokument/p13/Kiosk_P13.pdf",
+        "/dokument/p13%2FKiosk_P13.pdf",
+        "/dokument/f14-bla/../p13/Kiosk_P13.pdf",
+    ):
+        assert client.get(url).status_code in (403, 404), url
+
+
+def test_document_list_groups_team_and_shared_documents(
+    client, seeded, second_team, documents_dir
+):
+    _team_file(documents_dir, "p13", "Kiosk_P13.pdf")
+    _login(client, seeded["person"])
+
+    body = client.get("/dokument").get_data(as_text=True)
+
+    assert "Kiosk P13" in body
+    assert "/dokument/p13/Kiosk_P13.pdf" in body
+    assert "Cafeteria Instruktion MIH" in body
+    assert "Gemensamma" in body
+
+
+def test_other_teams_documents_are_not_listed(
+    client, seeded, second_team, documents_dir
+):
+    _team_file(documents_dir, "p13", "Kiosk_P13.pdf")
+    _login(client, seeded["other_parent"])
+
+    assert "Kiosk P13" not in client.get("/dokument").get_data(as_text=True)
+
+
+def test_a_shared_document_your_only_team_replaces_is_listed_once(
+    client, seeded, second_team, documents_dir, session_factory
+):
+    from duty_web.models import Person
+
+    _team_file(documents_dir, "p13", "Cafeteria_Instruktion_MIH.pdf")
+    nora = session_factory().query(Person).filter_by(email="nora@exempel.se").one()
+    _login(client, nora)  # P13 only
+
+    body = client.get("/dokument").get_data(as_text=True)
+
+    assert body.count("Cafeteria Instruktion MIH") == 1
+
+
+def test_a_shared_document_only_one_of_your_teams_replaces_stays_listed(
+    client, seeded, second_team, documents_dir
+):
+    _team_file(documents_dir, "p13", "Cafeteria_Instruktion_MIH.pdf")
+    _login(client, seeded["person"])  # F14 Blå (uses shared) and P13 (own copy)
+
+    body = client.get("/dokument").get_data(as_text=True)
+
+    assert body.count("Cafeteria Instruktion MIH") == 2
