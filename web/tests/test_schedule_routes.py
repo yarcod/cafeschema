@@ -1,3 +1,6 @@
+from duty_web.models import Person
+
+
 def _login(client, person):
     with client.session_transaction() as sess:
         sess["_user_id"] = str(person.id)
@@ -124,3 +127,57 @@ def test_att_gora_falls_back_to_the_duty_name_when_there_is_no_station(
     body = client.get("/").get_data(as_text=True)
 
     assert "Åby Julmarknad" in body
+
+
+def _month(seeded):
+    day = seeded["future_slot"].date
+    return f"year={day.year}&month={day.month}"
+
+
+def test_team_page_shows_the_parents_first_team_by_default(client, seeded, second_team):
+    _login(client, seeded["person"])
+
+    body = client.get(f"/team?{_month(seeded)}").get_data(as_text=True)
+
+    assert "Arena värdskap" in body
+    assert "Kioskpass" not in body
+
+
+def test_a_parent_on_two_teams_can_switch_to_the_other(client, seeded, second_team):
+    _login(client, seeded["person"])
+
+    body = client.get(f"/team?lag=p13&{_month(seeded)}").get_data(as_text=True)
+
+    assert "Kioskpass" in body
+    assert "Arena värdskap" not in body
+    assert "lag=f14-bla" in body  # the switcher leads back
+    assert body.count("lag=p13") >= 2  # month navigation stays on P13
+
+
+def test_another_teams_calendar_is_not_found(client, seeded, second_team):
+    _login(client, seeded["other_parent"])
+
+    assert client.get("/team?lag=p13").status_code == 404
+
+
+def test_a_parent_on_one_team_gets_no_team_switcher(client, seeded, second_team):
+    _login(client, seeded["other_parent"])
+
+    body = client.get(f"/team?{_month(seeded)}").get_data(as_text=True)
+
+    assert "team-switch" not in body
+
+
+def test_someone_with_no_child_on_any_team_sees_no_calendar(
+    client, seeded, session_factory
+):
+    session = session_factory()
+    outsider = Person(name="Ola", email="ola@exempel.se")
+    session.add(outsider)
+    session.commit()
+    _login(client, outsider)
+
+    response = client.get(f"/team?{_month(seeded)}")
+
+    assert response.status_code == 200
+    assert "Arena värdskap" not in response.get_data(as_text=True)

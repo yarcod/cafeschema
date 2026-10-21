@@ -5,11 +5,11 @@ from __future__ import annotations
 import hmac
 from datetime import date
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, abort, current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
-from ..models import Player, Slot, Team
-from ..roster import player_ids_for_parent
+from ..models import Slot
+from ..roster import teams_for_parent
 from .document_routes import instruction_url_for_duty
 from ..schedule_queries import (
     shift_mates_for,
@@ -22,22 +22,6 @@ from ..schedule_queries import (
 from ..session_scope import get_session as _session
 
 schedule_bp = Blueprint("schedule", __name__)
-
-
-def _team_id_for(session, person) -> int:
-    """v1 has exactly one team, so every slot's team_id is the same value.
-
-    Looked up from the parent's own player rather than hard-coded, so the
-    single-team assumption lives in one place ready to widen later (see the
-    spec's multi-team forward-compatibility note). Reading it off the player
-    rather than off a slot also works for a family with no duties this term.
-    """
-    player_ids = player_ids_for_parent(session, person.id)
-    if player_ids:
-        player = session.get(Player, min(player_ids))
-        if player is not None:
-            return player.team_id
-    return session.query(Team).first().id
 
 
 @schedule_bp.route("/")
@@ -119,9 +103,25 @@ def team():
     year = request.args.get("year", type=int, default=today.year)
     month = request.args.get("month", type=int, default=today.month)
     session = _session()
-    team_id = _team_id_for(session, current_user.person)
-    slots = slots_for_team_month(session, team_id, year, month)
-    undated_slots = undated_slots_for_team(session, team_id)
+
+    # A parent sees the teams they have a child on, and only those. Someone
+    # with no child on any team sees no calendar at all, rather than the
+    # first team's.
+    teams = teams_for_parent(session, int(current_user.id))
+    if not teams:
+        return render_template("team_empty.html")
+    slug = request.args.get("lag")
+    if slug is None:
+        current_team = teams[0]
+    else:
+        current_team = next((t for t in teams if t.slug == slug), None)
+        if current_team is None:
+            # Not found rather than forbidden: whether another team exists
+            # is none of this parent's business.
+            abort(404)
+
+    slots = slots_for_team_month(session, current_team.id, year, month)
+    undated_slots = undated_slots_for_team(session, current_team.id)
 
     prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
     next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
@@ -138,6 +138,8 @@ def team():
 
     return render_template(
         "team.html",
+        team=current_team,
+        teams=teams,
         days=_days(_shifts(slots)),
         duties_by_day=duties_by_day,
         undated_shifts=_shifts(undated_slots),

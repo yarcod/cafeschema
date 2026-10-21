@@ -123,6 +123,57 @@ def seeded(session_factory):
 
 
 @pytest.fixture
+def second_team(session_factory, seeded):
+    """A second team in the same club, P13, on the same future day.
+
+    The seeded first parent (only them, not their partner) has a child here
+    too, as a parent with children on two teams would. Nora's family is on
+    P13 only, and Maja's is a neighbour on the seeded team, so both teams
+    have someone to trade with.
+    """
+    from datetime import time
+
+    session = session_factory()
+    team = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add(team)
+    session.flush()
+    sibling = Player(name="Elsa Exempel", team_id=team.id)
+    sibling.parents = [session.get(Person, seeded["person"].id)]
+    session.add(sibling)
+    stranger = make_family(
+        session, team, "Nils Främling", [("Nora Främling", "nora@exempel.se")]
+    )
+    neighbour = make_family(
+        session, session.get(Team, seeded["team"].id), "Moa Granne",
+        [("Maja Granne", "maja@exempel.se")],
+    )
+    day = seeded["future_slot"].date
+
+    def slot(team_id, player, start, duty_name, venue):
+        return Slot(
+            team_id=team_id, date=day, start_time=time(start, 0),
+            end_time=time(start + 2, 0), station="Kiosk", duty_name=duty_name,
+            venue=venue, child_name=player.name, player_id=player.id,
+        )
+
+    sibling_slot = slot(team.id, sibling, 9, "Kioskpass", "Mölnlycke idrottshall")
+    stranger_slot = slot(team.id, stranger, 13, "Kioskpass", "Mölnlycke idrottshall")
+    neighbour_slot = slot(
+        seeded["team"].id, neighbour, 13, "Arena värdskap", "Wallenstam arena"
+    )
+    session.add_all([sibling_slot, stranger_slot, neighbour_slot])
+    session.commit()
+    return {
+        "team": team,
+        "sibling": sibling,
+        "sibling_slot": sibling_slot,
+        "stranger": stranger,
+        "stranger_slot": stranger_slot,
+        "neighbour_slot": neighbour_slot,
+    }
+
+
+@pytest.fixture
 def csrf_token(client, app):
     """Generate a CSRF token bound to the client's session cookie.
 

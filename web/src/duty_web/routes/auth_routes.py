@@ -78,8 +78,7 @@ def verify():
         # No open self-registration: only emails already seeded as a Person
         # (i.e. a real parent from the imported schedule) may log in. Anyone
         # else round-tripping a valid magic link would otherwise get an
-        # authenticated session and, via /team's fallback to the first Team,
-        # read the whole roster and season calendar.
+        # authenticated session and could then reach every page behind login.
         return render_template(
             "login.html", error="Den adressen finns inte i laglistan."
         )

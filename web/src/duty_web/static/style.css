@@ -783,3 +783,7 @@ a.day:hover { border-color: var(--ink); }
 }
 
 .slot-card.next .send-row { border-top-color: var(--next-overlay); }
+
+.team-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.team-switch a { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink-dim); text-decoration: none; }
+.team-switch a.active { background: var(--ink); color: var(--surface); }

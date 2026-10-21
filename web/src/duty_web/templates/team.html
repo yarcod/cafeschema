@@ -9,14 +9,21 @@
     <span class="count">{{ MONTHS_SV[month - 1]|capitalize }} {{ year }}</span>
   </div>
 </div>
+{% if teams|length > 1 %}
+<nav class="team-switch" aria-label="Lag">
+  {% for t in teams %}
+    <a class="{{ 'active' if t.id == team.id }}" href="{{ url_for('schedule.team', lag=t.slug, year=year, month=month) }}">{{ t.name }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
 
 <div class="cal-head">
   <div class="cal-nav">
-    <a href="{{ url_for('schedule.team', year=prev_year, month=prev_month) }}" aria-label="Föregående månad">‹</a>
+    <a href="{{ url_for('schedule.team', lag=team.slug, year=prev_year, month=prev_month) }}" aria-label="Föregående månad">‹</a>
   </div>
   <div class="month">{{ MONTHS_SV[month - 1]|capitalize }}</div>
   <div class="cal-nav">
-    <a href="{{ url_for('schedule.team', year=next_year, month=next_month) }}" aria-label="Nästa månad">›</a>
+    <a href="{{ url_for('schedule.team', lag=team.slug, year=next_year, month=next_month) }}" aria-label="Nästa månad">›</a>
   </div>
 </div>
 
