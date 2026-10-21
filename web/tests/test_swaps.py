@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 
 import pytest
 
@@ -321,3 +321,33 @@ def test_accepting_an_expired_swap_is_rejected():
             session, request.id, accepting_person_id=b.parents[0].id,
             now=datetime(2026, 1, 10),
         )
+
+
+def test_a_swap_across_teams_is_refused():
+    engine = make_engine(":memory:")
+    init_db(engine)
+    session = make_session_factory(engine)()
+    f15 = Team(name="F15", slug="f15", venue="Wallenstam arena")
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add_all([f15, p13])
+    session.flush()
+    klara = _family(session, f15, "Klara", "a@exempel.se")
+    nils = _family(session, p13, "Nils", "b@exempel.se")
+
+    def slot(team, player):
+        return Slot(
+            team_id=team.id, date=date(2026, 11, 1), start_time=time(18, 0),
+            end_time=time(21, 0), station="Café", duty_name="Cafépass",
+            venue="Wallenstam arena", player_id=player.id,
+        )
+
+    mine, theirs = slot(f15, klara), slot(p13, nils)
+    session.add_all([mine, theirs])
+    session.commit()
+
+    with pytest.raises(SwapError, match="samma lag"):
+        propose_swap(
+            session, proposer_slot_id=mine.id, target_slot_id=theirs.id,
+            proposer_person_id=klara.parents[0].id, now=datetime(2026, 10, 19, 12),
+        )
+    assert session.query(SwapRequest).count() == 0

@@ -35,6 +35,10 @@ def propose_swap(
         raise SwapError("Passet du vill byta med hittades inte.")
     if target_slot.player_id is None:
         raise SwapError("Passet du vill byta med är ledigt och har ingen ägare.")
+    # Teams never trade with each other. A parent with children on two
+    # teams holds slots on both, but each slot stays inside its own team.
+    if target_slot.team_id != proposer_slot.team_id:
+        raise SwapError("Du kan bara byta pass inom samma lag.")
     # Both of a player's parents hold the same slots, so "a pass you already
     # have" means the family's, not just this parent's own.
     if parent_owns_slot(session, proposer_person_id, target_slot):

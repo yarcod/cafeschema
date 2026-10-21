@@ -125,6 +125,26 @@ def swap_candidates_for_slot(slot: Slot, candidates: list[Slot]) -> list[Slot]:
     ]
 
 
+def swap_candidates_by_slot(
+    session: Session, person_id: int, slots: list[Slot], *, on_or_after: date
+) -> dict[int, list[Slot]]:
+    """For each of a parent's slots, the slots it could be traded for.
+
+    Trades never cross teams, so each slot is offered only its own team's
+    slots — a parent with children on two teams holds slots on both, and
+    must not be offered the other team's shifts for either.
+    """
+    by_team: dict[int, list[Slot]] = {}
+    result = {}
+    for slot in slots:
+        if slot.team_id not in by_team:
+            by_team[slot.team_id] = swappable_slots_for(
+                session, slot.team_id, person_id, on_or_after=on_or_after
+            )
+        result[slot.id] = swap_candidates_for_slot(slot, by_team[slot.team_id])
+    return result
+
+
 def _swaps_on_parents_slots(
     session: Session, person_id: int, slot_side
 ) -> list[SwapRequest]:

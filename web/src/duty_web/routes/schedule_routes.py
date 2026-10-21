@@ -15,8 +15,7 @@ from ..schedule_queries import (
     shift_mates_for,
     slots_for_parent,
     slots_for_team_month,
-    swap_candidates_for_slot,
-    swappable_slots_for,
+    swap_candidates_by_slot,
     undated_slots_for_parent,
     undated_slots_for_team,
 )
@@ -48,12 +47,9 @@ def mine():
     today = date.today()
     slots = slots_for_parent(session, int(current_user.id), on_or_after=today)
     undated_slots = undated_slots_for_parent(session, int(current_user.id))
-    team_id = _team_id_for(session, current_user.person)
-    candidates = swappable_slots_for(session, team_id, int(current_user.id), on_or_after=today)
-
-    candidates_by_slot = {
-        slot.id: swap_candidates_for_slot(slot, candidates) for slot in slots
-    }
+    candidates_by_slot = swap_candidates_by_slot(
+        session, int(current_user.id), slots, on_or_after=today
+    )
     mates_by_slot = {
         slot.id: shift_mates_for(session, slot) for slot in slots + undated_slots
     }

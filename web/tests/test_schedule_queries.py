@@ -5,6 +5,7 @@ from duty_web.models import Person, Player, Slot, SwapRequest, Team
 from duty_web.schedule_queries import (
     slots_for_parent,
     slots_for_team_month,
+    swap_candidates_by_slot,
     swaps_pending_for_parent,
 )
 
@@ -142,3 +143,32 @@ def test_swaps_pending_for_parent_returns_only_pending_requests_targeting_them()
         assert [r.id for r in swaps_pending_for_parent(session, parent.id)] == [
             pending.id
         ]
+
+
+def test_swap_candidates_stay_inside_each_slots_own_team():
+    session = make_session()
+    f15 = Team(name="F15", slug="f15", venue="Wallenstam arena")
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add_all([f15, p13])
+    session.flush()
+    klara = _family(session, f15, "Klara", "dan@exempel.se")
+    dan = klara.parents[0]
+    elsa = Player(name="Elsa", team_id=p13.id)
+    elsa.parents = [dan]
+    session.add(elsa)
+    moa = _family(session, f15, "Moa", "moa@exempel.se")
+    nils = _family(session, p13, "Nils", "nils@exempel.se")
+    session.flush()
+    klara_slot = _slot(f15.id, klara.id, 10)
+    elsa_slot = _slot(p13.id, elsa.id, 11)
+    moa_slot = _slot(f15.id, moa.id, 20)
+    nils_slot = _slot(p13.id, nils.id, 21)
+    session.add_all([klara_slot, elsa_slot, moa_slot, nils_slot])
+    session.commit()
+
+    result = swap_candidates_by_slot(
+        session, dan.id, [klara_slot, elsa_slot], on_or_after=date(2026, 1, 1)
+    )
+
+    assert [s.id for s in result[klara_slot.id]] == [moa_slot.id]
+    assert [s.id for s in result[elsa_slot.id]] == [nils_slot.id]
