@@ -46,13 +46,33 @@ def _unique_column_sets(connection: sqlite3.Connection, table: str) -> set[tuple
 
 
 def _add_team_slug(connection: sqlite3.Connection, slug: str) -> bool:
-    if "slug" in _columns(connection, "teams"):
-        return False
+    """Make sure every team has a slug. True if anything was written.
+
+    The column and its backfill go in one transaction (SQLite DDL is
+    transactional): a crash between them used to leave the column with NULL
+    slugs, and every re-run then failed on NOT NULL in the teams rebuild.
+    If that state is already there, it is repaired here.
+    """
+    has_column = "slug" in _columns(connection, "teams")
     (count,) = connection.execute("SELECT COUNT(*) FROM teams").fetchone()
+    if has_column:
+        (missing,) = connection.execute(
+            "SELECT COUNT(*) FROM teams WHERE slug IS NULL"
+        ).fetchone()
+        if not missing:
+            return False
     if count > 1:
         raise SystemExit("Fler än en grupp saknar slug — sätt dem för hand.")
-    connection.execute("ALTER TABLE teams ADD COLUMN slug VARCHAR")
-    connection.execute("UPDATE teams SET slug = ?", (slug,))
+
+    connection.execute("BEGIN")
+    try:
+        if not has_column:
+            connection.execute("ALTER TABLE teams ADD COLUMN slug VARCHAR")
+        connection.execute("UPDATE teams SET slug = ? WHERE slug IS NULL", (slug,))
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
     return True
 
 

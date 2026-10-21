@@ -112,3 +112,34 @@ def test_a_bad_slug_is_refused_before_anything_changes(migration, old_db):
     columns = {row[1] for row in connection.execute("PRAGMA table_info(teams)")}
     connection.close()
     assert "slug" not in columns
+
+
+def test_a_half_applied_slug_column_is_repaired_by_a_rerun(migration, old_db):
+    """A crash between ALTER and UPDATE used to leave slug NULL for good."""
+    connection = sqlite3.connect(old_db)
+    connection.execute("ALTER TABLE teams ADD COLUMN slug VARCHAR")
+    connection.commit()
+    connection.close()
+
+    assert migration.main(["x", str(old_db), "f15"]) == 0
+
+    assert _session(old_db).get(Team, 1).slug == "f15"
+
+
+def test_several_teams_without_slug_abort_and_change_nothing(migration, old_db):
+    connection = sqlite3.connect(old_db)
+    connection.execute("ALTER TABLE teams ADD COLUMN slug VARCHAR")
+    connection.execute(
+        "INSERT INTO teams (id, name, venue) VALUES (2, 'P13', 'Mölnlycke')"
+    )
+    connection.commit()
+    before = connection.execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall()
+    connection.close()
+
+    with pytest.raises(SystemExit, match="slug"):
+        migration.main(["x", str(old_db), "f15"])
+
+    connection = sqlite3.connect(old_db)
+    assert connection.execute("SELECT slug FROM teams").fetchall() == [(None,), (None,)]
+    assert connection.execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall() == before
+    connection.close()
