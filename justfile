@@ -83,6 +83,11 @@ migrate-push file="data/f15_parent_mailing_list.csv":
     printf 'put %s /tmp/roster.csv\nput scripts/migrate_player_ownership.py /tmp/migrate_player_ownership.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/migrate_player_ownership.py"
 
+# One-off: team slugs and per-team player names (idempotent). Run right after the deploy that adds them
+multi-team-migrate-push slug="f15":
+    printf 'put scripts/migrate_multi_team.py /tmp/migrate_multi_team.py\n' | fly ssh sftp shell -a duty-swap-webapp
+    fly ssh console -a duty-swap-webapp -C "python /tmp/migrate_multi_team.py /data/duty.db {{slug}}"
+
 # Download the deployed database to rehearse a migration against a copy
 db-pull out="/tmp/duty-copy.db":
     printf 'get /data/duty.db %s\n' "{{out}}" | fly ssh sftp shell -a duty-swap-webapp
