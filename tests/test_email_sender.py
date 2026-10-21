@@ -65,7 +65,7 @@ def test_connects_with_starttls_and_logs_in(smtp):
 def test_sends_to_the_whole_group(smtp):
     send(MSG, CFG, password="hemligt")
     sent = smtp.instances[0].sent[0]
-    assert sent["To"] == "a@x.se, b@x.se"
+    assert sent["Bcc"] == "a@x.se, b@x.se"
     assert sent["From"] == "robot@example.com"
     assert sent["Subject"] == "Påminnelse — matchvärd i morgon"
     assert sent["Reply-To"] == "styrelsen@example.com"
@@ -95,3 +95,28 @@ def test_smtp_failures_are_wrapped(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", boom)
     with pytest.raises(SendError, match="Kunde inte skicka"):
         send(MSG, CFG, password="hemligt")
+
+
+def test_recipients_are_hidden_from_each_other(smtp):
+    """A parent's address is not ours to show other parents: the group goes
+    in Bcc and To is the sender's own address."""
+    send(MSG, CFG, password="hemligt")
+    assert len(smtp.instances) == 1
+    assert len(smtp.instances[0].sent) == 1
+    sent = smtp.instances[0].sent[0]
+    assert sent["To"] == CFG.from_address
+    assert sent["Cc"] is None
+    for address in MSG.to:
+        assert address not in sent["To"]
+        assert address in sent["Bcc"]
+
+
+def test_send_error_does_not_leak_addresses(monkeypatch):
+    def boom(host, port):
+        raise smtplib.SMTPException("nope")
+
+    monkeypatch.setattr(smtplib, "SMTP", boom)
+    with pytest.raises(SendError) as info:
+        send(MSG, CFG, password="hemligt")
+    assert "a@x.se" not in str(info.value)
+    assert "2" in str(info.value)

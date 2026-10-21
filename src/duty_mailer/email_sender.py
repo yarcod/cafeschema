@@ -26,7 +26,10 @@ def send(message: Message, cfg: EmailConfig, *, password: str) -> None:
 
     email = EmailMessage()
     email["From"] = cfg.from_address
-    email["To"] = ", ".join(message.to)
+    # Bcc, with To pointing at ourselves: a parent's address is not ours to
+    # show other parents. send_message() delivers to Bcc and strips the header.
+    email["To"] = cfg.from_address
+    email["Bcc"] = ", ".join(message.to)
     email["Subject"] = message.subject
     if cfg.reply_to:
         email["Reply-To"] = cfg.reply_to
@@ -40,4 +43,7 @@ def send(message: Message, cfg: EmailConfig, *, password: str) -> None:
             server.login(cfg.smtp_user, password)
             server.send_message(email)
     except (smtplib.SMTPException, OSError) as exc:
-        raise SendError(f"Kunde inte skicka till {email['To']}: {exc}") from exc
+        raise SendError(
+            f"Kunde inte skicka \"{message.subject}\" till "
+            f"{len(message.to)} mottagare: {exc}"
+        ) from exc
