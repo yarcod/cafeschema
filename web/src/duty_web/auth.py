@@ -58,14 +58,9 @@ def issue_login_token(
     return token
 
 
-def verify_login_token(
-    session: Session,
-    token: str,
-    *,
-    secret_key: str,
-    now: datetime | None = None,
-) -> str:
-    now = now or utcnow()
+def _check_login_token(
+    session: Session, token: str, *, secret_key: str, now: datetime
+) -> LoginToken:
     try:
         payload = _serializer(secret_key).loads(
             token, max_age=TOKEN_MAX_AGE_SECONDS
@@ -91,7 +86,32 @@ def verify_login_token(
         raise AuthError("Länken har redan använts.")
     if row.expires_at < now:
         raise AuthError("Länken har upphört att gälla.")
+    return row
 
+
+def check_login_token(
+    session: Session,
+    token: str,
+    *,
+    secret_key: str,
+    now: datetime | None = None,
+) -> str:
+    """Validate a token without consuming it, for the confirmation page that
+    mail scanners (Outlook Safe Links etc.) are free to fetch."""
+    row = _check_login_token(session, token, secret_key=secret_key, now=now or utcnow())
+    return row.email
+
+
+def verify_login_token(
+    session: Session,
+    token: str,
+    *,
+    secret_key: str,
+    now: datetime | None = None,
+) -> str:
+    now = now or utcnow()
+    row = _check_login_token(session, token, secret_key=secret_key, now=now)
+    email = row.email
     row.consumed_at = now
     session.commit()
     return email

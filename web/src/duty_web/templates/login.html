@@ -2,6 +2,15 @@
 {% block title %}Caféschema — Logga in{% endblock %}
 {% block content %}
 <div class="login-body">
+  {% if confirm_token %}
+  <h2>Logga in</h2>
+  <p class="sub">Tryck på knappen för att slutföra inloggningen.</p>
+
+  <form method="post" action="{{ url_for('auth.verify') }}" class="field">
+    <input type="hidden" name="token" value="{{ confirm_token }}">
+    <button class="btn btn-primary btn-block" type="submit" autofocus>Logga in</button>
+  </form>
+  {% else %}
   <h2>Välkommen</h2>
   <p class="sub">Inget lösenord behövs. Ange din e-postadress så mailar vi en inloggningslänk, om adressen finns i laglistan.</p>
   <p class="sub">Använd <strong>samma adress som du registrerade i 360Player</strong> — det är den vi hämtar laglistan från.</p>
@@ -27,6 +36,7 @@
     <div class="headline">Länken gick inte att använda</div>
     <div class="detail">{{ error }}</div>
   </div>
+  {% endif %}
   {% endif %}
 </div>
 

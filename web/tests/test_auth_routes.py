@@ -107,7 +107,9 @@ def test_verify_logs_in_an_existing_person_and_redirects_home(
     session = session_factory()
     token = issue_login_token(session, "tova@exempel.se", secret_key="test-secret")
 
-    response = client.get(f"/login/verify?token={token}", follow_redirects=False)
+    response = client.post(
+        "/login/verify", data={"token": token}, follow_redirects=False
+    )
 
     assert response.status_code == 302
     assert response.headers["Location"] == "/"
@@ -123,13 +125,71 @@ def test_verify_refuses_to_log_in_an_email_with_no_existing_person(client, sessi
     session = session_factory()
     token = issue_login_token(session, "ny@exempel.se", secret_key="test-secret")
 
-    response = client.get(f"/login/verify?token={token}")
+    response = client.post("/login/verify", data={"token": token})
 
     assert response.status_code == 200
     assert "finns inte i laglistan" in response.get_data(as_text=True)
     assert session.query(Person).filter_by(email="ny@exempel.se").count() == 0
     with client.session_transaction() as sess:
         assert "_user_id" not in sess
+
+
+def test_verify_get_does_not_consume_the_token_or_log_in(
+    client, session_factory, seeded
+):
+    """Outlook Safe Links (and other mail scanners) GET every link in a
+    message before the recipient clicks it. If the GET consumed the token,
+    the scanner would burn it and the real click would say "already used".
+    So the GET only shows a button; the POST behind it does the login."""
+    from duty_web.auth import issue_login_token
+
+    session = session_factory()
+    token = issue_login_token(session, "tova@exempel.se", secret_key="test-secret")
+
+    for _ in range(3):
+        response = client.get(f"/login/verify?token={token}")
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'method="post"' in body
+        assert token in body
+
+    with client.session_transaction() as sess:
+        assert "_user_id" not in sess
+    session.expire_all()
+    row = session.query(LoginToken).filter_by(email="tova@exempel.se").one()
+    assert row.consumed_at is None
+
+    response = client.post("/login/verify", data={"token": token})
+    assert response.status_code == 302
+
+
+def test_verify_get_shows_the_error_for_an_already_used_token(
+    client, session_factory, seeded
+):
+    from duty_web.auth import issue_login_token
+
+    session = session_factory()
+    token = issue_login_token(session, "tova@exempel.se", secret_key="test-secret")
+    client.post("/login/verify", data={"token": token})
+
+    response = client.get(f"/login/verify?token={token}")
+
+    body = response.get_data(as_text=True)
+    assert "redan använts" in body
+    assert 'action="/login/verify"' not in body
+
+
+def test_verify_post_cannot_reuse_a_token(client, session_factory, seeded):
+    from duty_web.auth import issue_login_token
+
+    session = session_factory()
+    token = issue_login_token(session, "tova@exempel.se", secret_key="test-secret")
+    client.post("/login/verify", data={"token": token})
+
+    response = client.post("/login/verify", data={"token": token})
+
+    assert response.status_code == 200
+    assert "redan använts" in response.get_data(as_text=True)
 
 
 def test_verify_rejects_a_bad_token(client):

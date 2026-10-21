@@ -10,6 +10,7 @@ from flask_login import login_user
 from ..auth import (
     TOKEN_MAX_AGE_SECONDS,
     AuthError,
+    check_login_token,
     issue_login_token,
     verify_login_token,
 )
@@ -63,11 +64,23 @@ def login():
     return render_template("login.html", sent_to=email)
 
 
-@auth_bp.route("/login/verify")
+@auth_bp.route("/login/verify", methods=["GET", "POST"])
 def verify():
     session = _session()
-    token = request.args.get("token", "")
 
+    if request.method == "GET":
+        # Mail scanners like Outlook Safe Links fetch every link in a message
+        # before the recipient clicks it, so the GET must not consume the
+        # token — otherwise the scanner burns it and the real click fails.
+        # It only shows a button; the POST behind that does the login.
+        token = request.args.get("token", "")
+        try:
+            check_login_token(session, token, secret_key=_secret_key())
+        except AuthError as exc:
+            return render_template("login.html", error=str(exc))
+        return render_template("login.html", confirm_token=token)
+
+    token = request.form.get("token", "")
     try:
         email = verify_login_token(session, token, secret_key=_secret_key())
     except AuthError as exc:
