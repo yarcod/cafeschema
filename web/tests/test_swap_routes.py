@@ -318,3 +318,27 @@ def test_post_swaps_with_an_unfilled_target_slot_does_not_crash_or_create_a_requ
 
     assert response.status_code == 302
     assert session.query(SwapRequest).count() == 0
+
+
+def test_post_swaps_refuses_a_target_on_another_team(
+    client, session_factory, seeded, second_team, monkeypatch, csrf_token
+):
+    """The seeded parent is on both teams, but a swap stays inside one: their
+    F14 slot cannot be offered for a P13 slot, whatever the form says."""
+    from duty_web.models import SwapRequest
+
+    sent = []
+    monkeypatch.setattr(
+        "duty_web.routes.swap_routes.send_swap_proposed",
+        lambda *args, **kwargs: sent.append(args),
+    )
+    _login(client, seeded["person"])
+
+    client.post("/swaps", data={
+        "proposer_slot_id": str(seeded["future_slot"].id),
+        "target_slot_ids": [str(second_team["stranger_slot"].id)],
+        "csrf_token": csrf_token(),
+    })
+
+    assert session_factory().query(SwapRequest).count() == 0
+    assert sent == []
