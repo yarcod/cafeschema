@@ -18,7 +18,7 @@ from .config import Config, ConfigError, load_config
 from .email_sender import SendError, send
 from .scheduling import due_on, previous_occurrence, today_in
 from .sources import RosterError, ScheduleSource, build_source
-from .templates import render
+from .templates import format_time_range_sv, render
 
 
 def _with_sheet_override(cfg: Config, path: str) -> Config:
@@ -59,8 +59,13 @@ def run(
             documents_link=cfg.schedule.documents_link,
         )
 
+        # Actions logs are world-readable: say which shift and how many
+        # recipients, never who.
+        shift = " ".join(filter(None, (occ.due.isoformat(), format_time_range_sv(occ))))
+        recipients = f"{len(message.to)} mottagare"
+
         if dry_run:
-            print(f"--- {role.value} -> {', '.join(message.to)}")
+            print(f"--- {role.value} ({shift}) -> {recipients}")
             print(f"Ämne: {message.subject}")
             print(message.body)
             print()
@@ -68,7 +73,7 @@ def run(
 
         try:
             send(message, cfg.email, password=password)
-            print(f"Skickade {role.value} till {', '.join(message.to)}")
+            print(f"Skickade {role.value} ({shift}) till {recipients}")
         except SendError as exc:
             # Keep going: with no retry state, skipping the rest would
             # silently drop reminders for unrelated groups.

@@ -97,7 +97,9 @@ def test_dry_run_sends_nothing(sent, capsys):
     )
     assert code == 0
     assert sent == []
-    assert "b@x.se" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "b@x.se" not in out
+    assert "1 mottagare" in out
 
 
 def test_a_failed_send_does_not_stop_the_others(monkeypatch, capsys):
@@ -163,3 +165,32 @@ def test_a_day_with_two_shifts_sends_two_mails_each_to_only_its_own_parents(sent
     assert [m.to for m in sent] == [("tidig@x.se",), ("sen@x.se",)]
     assert "Sen" not in sent[0].body and "Tidig" not in sent[1].body
     assert "09:00–12:00" in sent[0].subject and "12:00–15:00" in sent[1].subject
+
+
+def test_no_recipient_address_reaches_stdout_or_stderr(monkeypatch, capsys):
+    """The repo is public, so Actions logs are world-readable."""
+    group = Occurrence(
+        date(2026, 9, 19),
+        (Person("hemlig1@x.se", "Hanna"), Person("hemlig2@x.se")),
+        (7, 1),
+    )
+
+    def run_with(dry_run, send):
+        monkeypatch.setattr("duty_mailer.__main__.send", send)
+        run(
+            CFG, today=date(2026, 9, 18), dry_run=dry_run, password="x",
+            source=FakeSource([LAST_WEEK, group]),
+        )
+
+    def failing(msg, cfg, password):
+        raise SendError("Kunde inte skicka")
+
+    run_with(True, lambda msg, cfg, password: None)
+    run_with(False, lambda msg, cfg, password: None)
+    run_with(False, failing)
+
+    out, err = capsys.readouterr()
+    for address in ("hemlig1@x.se", "hemlig2@x.se", "a@x.se"):
+        assert address not in out
+        assert address not in err
+    assert "2 mottagare" in out
