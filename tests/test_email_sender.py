@@ -119,4 +119,24 @@ def test_send_error_does_not_leak_addresses(monkeypatch):
     with pytest.raises(SendError) as info:
         send(MSG, CFG, password="hemligt")
     assert "a@x.se" not in str(info.value)
-    assert "2" in str(info.value)
+    assert "2 mottagare" in str(info.value)
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        smtplib.SMTPRecipientsRefused({"a@x.se": (550, b"no such user <a@x.se>")}),
+        smtplib.SMTPDataError(550, b"5.7.1 <a@x.se>: rejected"),
+    ],
+)
+def test_send_error_hides_addresses_echoed_by_smtp_exceptions(monkeypatch, exc):
+    def boom(host, port):
+        raise exc
+
+    monkeypatch.setattr(smtplib, "SMTP", boom)
+    with pytest.raises(SendError) as info:
+        send(MSG, CFG, password="hemligt")
+    text = str(info.value)
+    assert "a@x.se" not in text and "b@x.se" not in text
+    assert type(exc).__name__ in text
+    assert "2 mottagare" in text
