@@ -43,6 +43,10 @@ just docs-list                                       # visar vad som ligger där
 `just docs-push fil.pdf` delas av hela klubben, medan `just docs-push fil.pdf p13`
 bara gäller P13. Ett lags egen fil går före en delad fil med samma namn.
 
+Flyttar man en instruktion mellan ett lags mapp och den gemensamma mappen
+slutar länkarna i redan skickade påminnelsemail att fungera. Länken pekar på den
+gamla platsen, och mailen går inte att ändra i efterhand.
+
 Filerna ligger på Fly-volymen under `/data/dokument`, så en ny fil behöver ingen
 driftsättning. Tillåtna filtyper: `pdf`, `png`, `jpg`, `txt`, `md`. Filnamnet blir
 rubriken i listan — `Kiosk_instruktioner.pdf` visas som "Kiosk instruktioner".
@@ -168,6 +172,25 @@ Kim Exempel,kim@exempel.se,Alva Exempel
   `data/name_fixes.json` (`{"Namn i schemat": "Namn i kontaktlistan"}`).
   Annars blir passet *Ledigt*.
 
+## Lägga till ett lag
+
+```bash
+just team-add p13 P13 "Mölnlycke idrottshall"                      # skapar laget (slug, namn, hall)
+just schedule-build <tränarens fil> data/p13_parent_mailing_list.csv data/seed_p13.xlsx
+just roster-push p13 [fil]                                         # spelare och föräldrar; standardfil data/p13_parent_mailing_list.csv
+just schedule-push p13 data/seed_p13.xlsx                          # laddar upp passen
+just docs-push <fil> p13                                           # lagets egna instruktioner (utan lag: delade av klubben)
+just docs-list                                                     # kontrollera vad som ligger var
+```
+
+Kör `roster-push` före `schedule-push`: importen kräver att spelarna finns.
+
+**Engångskörning vid övergången till flera lag.** Direkt efter den driftsättning
+som inför flera lag, kör `just multi-team-migrate-push f15` (ger det befintliga
+laget en slug och gör spelarnamn unika per lag). Öva först på en kopia:
+`just db-pull`, och kör `scripts/migrate_multi_team.py` mot kopian. Kör den
+två gånger; andra gången ska den bara skriva "fanns redan".
+
 ## Testa bytesflödet
 
 En slask-förälder och ett testpass kan läggas in för att prova hela kedjan —
@@ -180,7 +203,7 @@ just test-fixture-remove min.adress@exempel.se   # tar bort föräldern, passet 
 ```
 
 Testpasset syns för alla i **Hela laget**, så ta bort det när det är avklarat.
-Det försvinner också vid nästa `schedule-push`, eftersom den ersätter alla pass.
+Det försvinner också vid nästa `schedule-push` för laget, eftersom den ersätter just det lagets pass.
 
 ## Utveckling
 
