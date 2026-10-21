@@ -144,6 +144,7 @@ class WebAppApiSource:
                     start_time=shift.start_time,
                     end_time=shift.end_time,
                     venue=shift.venue or None,
+                    team=shift.team,
                     # Only when the shift's rows agree on one: a shift split
                     # across two stations has no single place to name, and
                     # guessing at the first would send half the group to the

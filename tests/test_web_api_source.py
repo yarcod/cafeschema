@@ -466,3 +466,27 @@ def test_identical_shifts_of_two_teams_are_mailed_separately():
     assert all(len(occ.people) == 1 for occ in occurrences)
     assert by_email["f15@exempel.se"].document_link.endswith("/f15/Cafe.pdf")
     assert by_email["p13@exempel.se"].document_link.endswith("/p13/Cafe.pdf")
+
+
+@responses.activate
+def test_the_shifts_team_reaches_the_occurrence():
+    """The mailer needs the team to keep key handovers within one team."""
+    def entry(team, email):
+        return {
+            "date": "2026-09-19", "start_time": "12:30", "end_time": "16:30",
+            "station": "Café Arena A", "duty_name": "Cafépass",
+            "venue": "Wallenstam arena", "note": None, "team": team,
+            "parents": [{"name": email.split("@")[0], "email": email}],
+        }
+
+    responses.get(
+        "https://web.example/api/schedule",
+        json=[entry("f15", "f15@exempel.se"), entry("p13", "p13@exempel.se")],
+    )
+    source = WebAppApiSource(
+        "https://web.example/api/schedule", api_key="secret", default_lead_days=(1,)
+    )
+
+    teams = {occ.people[0].email: occ.team for occ in source.fetch()}
+
+    assert teams == {"f15@exempel.se": "f15", "p13@exempel.se": "p13"}

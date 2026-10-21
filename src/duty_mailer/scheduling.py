@@ -64,7 +64,7 @@ def previous_occurrence(
 ) -> Occurrence | None:
     """The last shift of the previous duty day, if it is close enough.
 
-    Used to tell the incoming group who to collect keys from. Across a
+    Only shifts of `occ`'s own team count. Used to tell the incoming group who to collect keys from. Across a
     season break the previous group is not a meaningful handover, so
     anything further back than `max_gap_days` is treated as no predecessor
     at all.
@@ -75,7 +75,10 @@ def previous_occurrence(
     were there a few hours earlier. Among that earlier day's shifts the
     latest one wins, for the same reason — they are the ones who locked up.
     """
-    earlier = [o for o in occurrences if o.due < occ.due]
+    # Only the same team: keys and cafés are shared, but the Kansli handles
+    # each team on its own, so a handover never points at another team's
+    # parents. An untagged roster has team "" throughout and is unaffected.
+    earlier = [o for o in occurrences if o.due < occ.due and o.team == occ.team]
     if not earlier:
         return None
     last_day = max(o.due for o in earlier)

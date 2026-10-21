@@ -61,6 +61,9 @@ class Occurrence:
     # or when the shift's rows disagree.
     venue: str | None = None
     station: str | None = None
+    # The team's slug, "" for the tabular sources. Keeps key handovers within
+    # one team: the Kansli handles each team on its own.
+    team: str = ""
 
     def __post_init__(self) -> None:
         if not self.people:

@@ -18,12 +18,14 @@ def occ(
     month: int = 9,
     start: time | None = None,
     email: str = "a@x.se",
+    team: str = "",
 ) -> Occurrence:
     return Occurrence(
         due=date(2026, month, day),
         people=(Person(email, "Anna"),),
         lead_days=lead_days,
         start_time=start,
+        team=team,
     )
 
 
@@ -139,6 +141,45 @@ def test_an_earlier_shift_the_same_day_is_not_a_predecessor():
     midday = occ(19, start=time(12, 0), email="mitt@x.se")
 
     assert previous_occurrence([morning, midday], midday, max_gap_days=8) is None
+
+
+# --- previous_occurrence, per team ----------------------------------------
+#
+# Keys and cafés are shared places, but the Kansli handles each team on its
+# own, so a handover never points at another team's parents.
+
+
+def test_a_team_does_not_find_another_teams_later_shift_as_predecessor():
+    f15_early = occ(12, start=time(9, 0), email="f15@x.se", team="f15")
+    p13_late = occ(12, start=time(15, 0), email="p13@x.se", team="p13")
+    f15_today = occ(19, start=time(9, 0), team="f15")
+
+    predecessor = previous_occurrence(
+        [f15_early, p13_late, f15_today], f15_today, max_gap_days=8
+    )
+
+    assert predecessor == f15_early
+
+
+def test_only_the_other_team_on_the_previous_day_falls_back_to_own_last_day():
+    f15_old = occ(10, email="f15@x.se", team="f15")
+    p13_yesterday = occ(12, email="p13@x.se", team="p13")
+    f15_today = occ(19, team="f15")
+
+    assert (
+        previous_occurrence([f15_old, p13_yesterday, f15_today], f15_today, max_gap_days=9)
+        == f15_old
+    )
+    assert (
+        previous_occurrence([f15_old, p13_yesterday, f15_today], f15_today, max_gap_days=8)
+        is None
+    )
+
+
+def test_an_untagged_roster_behaves_as_before():
+    a, b, c = occ(5), occ(12), occ(19)
+    assert all(o.team == "" for o in (a, b, c))
+    assert previous_occurrence([a, b, c], c, max_gap_days=8) == b
 
 
 # --- today_in -------------------------------------------------------------
