@@ -140,3 +140,43 @@ def test_send_error_hides_addresses_echoed_by_smtp_exceptions(monkeypatch, exc):
     assert "a@x.se" not in text and "b@x.se" not in text
     assert type(exc).__name__ in text
     assert "2 mottagare" in text
+
+
+def test_bcc_is_stripped_from_the_wire_but_still_delivered(monkeypatch):
+    """Let the real send_message flatten the message; capture what would be
+    handed to the server."""
+    wire = {}
+
+    class WireSMTP(smtplib.SMTP):
+        def __init__(self, host, port):
+            self.local_hostname = "test"
+            self.esmtp_features = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, user, password):
+            pass
+
+        def ehlo_or_helo_if_needed(self):
+            pass
+
+        def sendmail(self, from_addr, to_addrs, msg, *args, **kwargs):
+            wire["args"] = (from_addr, list(to_addrs), msg)
+
+    monkeypatch.setattr(smtplib, "SMTP", WireSMTP)
+
+    send(MSG, CFG, password="hemligt")
+
+    from_addr, to_addrs, raw = wire["args"]
+    assert from_addr == CFG.from_address
+    assert {"a@x.se", "b@x.se"} <= set(to_addrs)
+    text = raw.decode() if isinstance(raw, bytes) else raw
+    assert "a@x.se" not in text and "b@x.se" not in text
+    assert "Bcc" not in text
