@@ -276,3 +276,56 @@ def test_importing_one_teams_schedule_leaves_other_teams_slots_alone(tmp_path):
     assert sorted(slot.team_id for slot in session.query(Slot).all()) == sorted(
         [f14.id, p13.id]
     )
+
+
+def test_reimporting_a_season_with_swap_history_discards_only_that_teams_swaps(tmp_path):
+    from datetime import datetime
+
+    from duty_web.models import SwapRequest
+
+    session = make_session()
+    f14 = seeded_team(session, players=("Tova Exempel", "Siri Exempel"))
+    p13 = Team(name="P13", slug="p13", venue="Mölnlycke idrottshall")
+    session.add(p13)
+    session.flush()
+    session.add_all([Player(name="Elsa Berg", team_id=p13.id),
+                     Player(name="Ida Berg", team_id=p13.id)])
+    session.commit()
+
+    def rows(player_a, player_b, duty, venue):
+        return [
+            [2026, duty, venue, "Kiosk", 3, "2026-01-16", "Fredag", "18:00-21:00", player_a, None],
+            [2026, duty, venue, "Kiosk", 3, "2026-01-17", "Lördag", "09:00-12:00", player_b, None],
+        ]
+
+    f14_rows = rows("Tova Exempel", "Siri Exempel", "Arena värdskap", "Wallenstam arena")
+    p13_rows = rows("Elsa Berg", "Ida Berg", "Kioskpass", "Mölnlycke idrottshall")
+    import_schedule(session, write_xlsx(tmp_path, f14_rows), team_id=f14.id)
+    import_schedule(session, write_xlsx(tmp_path, p13_rows, name="p13.xlsx"), team_id=p13.id)
+    session.commit()
+
+    def slots(team):
+        return session.query(Slot).filter_by(team_id=team.id).order_by(Slot.date).all()
+
+    now = datetime(2026, 1, 1, 12, 0)
+    first, second = slots(f14)
+    other_first, other_second = slots(p13)
+    session.add_all([
+        SwapRequest(proposer_slot_id=first.id, target_slot_id=second.id,
+                    status="pending", created_at=now),
+        SwapRequest(proposer_slot_id=second.id, target_slot_id=first.id,
+                    status="declined", created_at=now, resolved_at=now),
+        SwapRequest(proposer_slot_id=other_first.id, target_slot_id=other_second.id,
+                    status="pending", created_at=now),
+    ])
+    session.commit()
+
+    count = import_schedule(session, write_xlsx(tmp_path, f14_rows, name="again.xlsx"),
+                            team_id=f14.id)
+    session.commit()
+
+    assert count == 2
+    remaining = session.query(SwapRequest).all()
+    assert [(r.proposer_slot_id, r.target_slot_id) for r in remaining] == [
+        (other_first.id, other_second.id)
+    ]

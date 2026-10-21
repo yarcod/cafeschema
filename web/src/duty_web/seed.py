@@ -18,7 +18,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
-from .models import Player, Slot, Team
+from .models import Player, Slot, SwapRequest, Team
 from .roster import normalize_name
 
 
@@ -83,7 +83,14 @@ def import_schedule(session: Session, path: str | Path, *, team_id: int) -> int:
         )
 
     # Replaces this team's season only; other teams' slots and swaps are
-    # none of this file's business.
+    # none of this file's business. Swap requests point at slots in any
+    # status, so the team's go first or the foreign key refuses the delete:
+    # re-importing a season discards its swaps.
+    team_slot_ids = session.query(Slot.id).filter(Slot.team_id == team_id)
+    session.query(SwapRequest).filter(
+        SwapRequest.proposer_slot_id.in_(team_slot_ids)
+        | SwapRequest.target_slot_id.in_(team_slot_ids)
+    ).delete(synchronize_session=False)
     session.query(Slot).filter(Slot.team_id == team_id).delete()
     session.flush()
 
