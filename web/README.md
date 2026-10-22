@@ -75,7 +75,8 @@ Ingenting händer förrän du trycker **Genomför**.
 
 Spelare läses bara från spelarrader. Ledare känns igen automatiskt: i exporten
 står en ledare en gång till, utan barn och utan föräldrar, med samma e-post som
-när hen står som förälder. Ledarnas barn står inte på pass. Är någon felaktigt
+när hen står som förälder. Ledarnas barn markeras som undantagna; det börjar gälla först när bemanningen
+kommer (plan 2), så ett schemaimport tilldelar dem fortfarande pass. Är någon felaktigt
 ledare rättas det i 360Player, inte här. Den som redan finns i ett annat lag
 kopplas till det här laget men byter aldrig namn. Ingen tas bort av en import:
 den som saknas i filen listas som en varning. Telefonnummer läses aldrig in.
@@ -98,7 +99,8 @@ curl -H "Authorization: Bearer $NYCKEL" https://innebandy.edholm.cc/admin/api
 körs två gånger: först `"dry_run": true`, som ger exakt Granska-listan och en
 `plan_token`. Sedan `"dry_run": false` med samma `plan_token`, som genomför
 just det som granskades. Har något ändrats emellan blir svaret `409` och du
-granskar igen.
+granskar igen. Logga aldrig `plan_token` (agentägare): den bär den planerade
+indatan.
 
 ```bash
 curl -X POST -H "Authorization: Bearer $NYCKEL" -F team=f15 -F file=@F15-members.csv \

@@ -69,6 +69,10 @@ Stations are picked from a list, never typed freely, and names are compared
 after normalization, so "cafe", "Cafe" and "Café" can never become three
 places with three different instruction links. Venues and stations are shared
 by the whole club (Wallenstam arena is the same building for F15 and P13).
+The migration seeds venues, stations and documents only on its first run, while
+the tables are empty. Later runs, and every schedule push, only link slots
+without a station to stations that already exist; they never create or rename
+a place and never touch a document, so an unlink or delete in the admin sticks.
 
 ### D5 — Leaders come from 360Player, and their families are exempt
 
@@ -186,7 +190,7 @@ warnings)`.
 | `station.create` | club | rejects near-duplicates (`409 near_duplicate` + suggestion) |
 | `station.link_document` | club | link an uploaded instruction |
 | `team_admins.add` / `team_admins.remove` | team | ansvariga |
-| `api_key.create` / `api_key.revoke` | self | under ⚙ |
+| *(not actions)* | self | API key create/revoke are settings pages under ⚙, not registry actions, so a leaked key can't mint keys |
 
 ## Flows
 
@@ -246,6 +250,8 @@ Granska ("Vem är 'Elin Exempel'? [välj spelare]"), replacing
 Input: the 360Player members CSV (D5).
 
 - **Additive, as today:** adds players, parents and links, and updates names.
+  Players come only from player rows. People who have ties to other teams are
+  linked to this team but never renamed.
 - **Roles:** detects leaders, rewrites the team's `team_roles(leader)` rows and
   recomputes `players.exempt`.
 - **Missing people:** people absent from the file are not removed. They're
@@ -255,14 +261,16 @@ Input: the 360Player members CSV (D5).
   them).
 
 The CSV is parsed in memory and never written to disk. The phone-number
-column is ignored.
+column is ignored. Uploads are limited to 2 MB per request and 1 MB per file.
 
 ### Places
 
 `venue.create`, `station.create`, `station.link_document`. A station whose
 normalized name matches an existing one at the same venue is refused with the
-existing one as suggestion. Linking offers the uploaded documents (shared, and
-the team's own) and ranks the ones whose filename contains the venue's name
+existing one as suggestion. Linking offers only the shared root documents (a
+station is club-wide, so a team's private file would be broken for the other
+teams); a file of the same name in a team's folder overrides the shared one for
+that team. It ranks the ones whose filename contains the venue's name
 first. Only a klubbadmin can delete a venue or station, and only when no slot
 uses it.
 
@@ -305,6 +313,8 @@ Normative. Where this section and another disagree, this one wins.
   sees only its `prefix`, owner, creation date and last use.
 - **Accepted only** as `Authorization: Bearer` on `/admin/api/*`. It's never
   accepted as a query parameter, cookie or form field, or on any other route.
+  A key-shaped value anywhere but the Bearer header is refused with `400`
+  and redacted from the access log.
 - **Lifetime:** expires after 180 days by default. Revoked on demand.
   `last_used_at` is shown to its owner.
 - **No standing rights:** permissions are resolved on every call, so an
