@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Caféschema{% endblock %}
+{% block content %}
+<div class="magic-sent error">
+  <span class="headline">{{ message }}</span>
+</div>
+<a class="btn btn-sm" href="{{ url_for('schedule.mine') }}">Till startsidan</a>
+{% endblock %}

@@ -7,9 +7,10 @@ import io
 import zlib
 from datetime import timedelta
 
-from flask import Flask, Request, request
+from flask import Flask, Request, jsonify, render_template, request
 from flask_login import LoginManager, UserMixin, current_user
 from flask_wtf import CSRFProtect
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .admin.permissions import admin_teams
@@ -194,6 +195,25 @@ def create_app(config: AppConfig) -> Flask:
     app.register_blueprint(swap_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(api_bp)
+
+    # The API speaks JSON even when the framework refuses before a route runs;
+    # everyone else gets a short page in Swedish instead of werkzeug's English.
+    api_errors = {404: "not_found", 405: "method_not_allowed", 413: "too_large", 429: "rate_limited"}
+    page_errors = {
+        404: "Sidan finns inte.",
+        413: "Filen är för stor (högst 1 MB).",
+        429: "För många försök. Vänta en minut och försök igen.",
+    }
+
+    def _refusal(exc: HTTPException):
+        if request.path.startswith("/admin/api"):
+            return jsonify({"error": api_errors[exc.code]}), exc.code
+        if exc.code in page_errors:
+            return render_template("fel.html", message=page_errors[exc.code]), exc.code
+        return exc
+
+    for code in api_errors:
+        app.register_error_handler(code, _refusal)
 
     # The login/verify flow is unauthenticated by nature (that's the point
     # of a magic link) and self-limits via the login-token rate limit and
