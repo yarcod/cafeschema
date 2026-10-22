@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from sqlalchemy import Column, ForeignKey, Table, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Table, UniqueConstraint, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -65,6 +65,10 @@ class Player(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    # True when a parent is one of the team's leaders in 360Player: leaders'
+    # families don't staff shifts. Recomputed by every roster import, never
+    # set by hand (spec D5).
+    exempt: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     team: Mapped[Team] = relationship()
     parents: Mapped[list[Person]] = relationship(
@@ -98,9 +102,17 @@ class Slot(Base):
     player_id: Mapped[int | None] = mapped_column(
         ForeignKey("players.id"), default=None
     )
+    # The station this shift is held at. Nullable until every slot has been
+    # linked (migrate.py does it for imported ones); venue and station above
+    # stay as denormalized text so /api/schedule and the mailer read them
+    # unchanged.
+    station_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stations.id"), default=None
+    )
 
     team: Mapped[Team] = relationship()
     player: Mapped[Player | None] = relationship()
+    station_row: Mapped[Station | None] = relationship()
 
 
 class SwapRequest(Base):
@@ -125,3 +137,78 @@ class LoginToken(Base):
     email: Mapped[str]
     expires_at: Mapped[datetime]
     consumed_at: Mapped[datetime | None] = mapped_column(default=None)
+
+
+ROLE_LEADER = "leader"
+ROLE_ANSVARIG = "ansvarig"
+
+
+class Venue(Base):
+    """A place the club staffs shifts at, shared by every team (spec D4)."""
+
+    __tablename__ = "venues"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    # normalize_key(name): what makes "Café" and "cafe" the same place.
+    name_key: Mapped[str] = mapped_column(unique=True)
+
+    stations: Mapped[list[Station]] = relationship(
+        back_populates="venue", order_by="Station.name"
+    )
+
+
+class Station(Base):
+    """Where in a venue a shift is held, and the instruction for it."""
+
+    __tablename__ = "stations"
+    __table_args__ = (UniqueConstraint("venue_id", "name_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"))
+    name: Mapped[str]
+    name_key: Mapped[str]
+    # A bare filename, looked up in the slot's team folder first and then
+    # among the club's shared documents (see routes/document_routes.py).
+    document: Mapped[str | None] = mapped_column(default=None)
+
+    venue: Mapped[Venue] = relationship(back_populates="stations")
+
+
+class TeamRole(Base):
+    """A person's role in one team: a leader (from 360Player) or an ansvarig."""
+
+    __tablename__ = "team_roles"
+
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"), primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(primary_key=True)
+
+    person: Mapped[Person] = relationship()
+    team: Mapped[Team] = relationship()
+
+
+class ClubAdmin(Base):
+    __tablename__ = "club_admins"
+
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"), primary_key=True)
+
+    person: Mapped[Person] = relationship()
+
+
+class ApiKey(Base):
+    """A person's key for the admin API. Only a hash of the key is stored."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"))
+    # The public start of the key ("cs_1a2b3c4d"), safe to show and log.
+    prefix: Mapped[str]
+    key_hash: Mapped[str] = mapped_column(unique=True)
+    created_at: Mapped[datetime]
+    expires_at: Mapped[datetime]
+    last_used_at: Mapped[datetime | None] = mapped_column(default=None)
+    revoked_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    person: Mapped[Person] = relationship()
