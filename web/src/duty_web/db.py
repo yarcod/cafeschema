@@ -32,15 +32,20 @@ def _enable_foreign_keys(dbapi_connection, connection_record) -> None:
 
 
 def make_engine(db_path: str) -> Engine:
+    # hide_parameters: a failed statement's message otherwise carries the
+    # bound values (names, addresses), and Flask logs the traceback.
     if db_path == ":memory:":
         engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
+            hide_parameters=True,
         )
     else:
         engine = create_engine(
-            f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+            f"sqlite:///{db_path}",
+            connect_args={"check_same_thread": False},
+            hide_parameters=True,
         )
     event.listen(engine, "connect", _enable_foreign_keys)
     return engine

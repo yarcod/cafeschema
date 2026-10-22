@@ -169,3 +169,32 @@ def test_a_failing_mail_after_commit_keeps_the_change(session_factory, admins, e
 
     assert session_factory().query(Venue).count() == 1
     assert "efter genomförande" in caplog.text
+
+
+def test_a_write_that_loses_a_race_is_a_409_and_leaks_no_values(
+    session_factory, admins, echo, caplog
+):
+    session = session_factory()
+    ctx = _ctx(session, admins["ansvarig"], "f14-bla")
+    _, token = dry_run(session, ctx, echo, EchoInput("race@exempel.se"), secret_key=SECRET)
+
+    with caplog.at_level(logging.DEBUG):
+        with pytest.raises(PlanTokenError) as caught:
+            apply_plan(session, ctx, token, secret_key=SECRET, via="webb")
+
+    assert (caught.value.status, caught.value.code) == (409, "conflict")
+    assert session.query(Venue).count() == 0
+    assert "@" not in caplog.text and "exempel" not in caplog.text
+
+
+def test_database_errors_carry_no_bound_parameters(session_factory):
+    from sqlalchemy.exc import IntegrityError
+
+    session = session_factory()
+    session.add_all([
+        Venue(name="Hemlig@exempel.se", name_key="k"),
+        Venue(name="Hemlig@exempel.se", name_key="k"),
+    ])
+    with pytest.raises(IntegrityError) as caught:
+        session.flush()
+    assert "exempel" not in str(caught.value) and "@" not in str(caught.value)

@@ -50,6 +50,11 @@ class EchoAction(Action):
         plan.writes.append(
             lambda s: s.add(Venue(name=text_, name_key=normalize_key(text_)))
         )
+        if text_.startswith("race"):
+            # What two concurrent creates of one name look like at write time.
+            plan.writes.append(
+                lambda s: s.add(Venue(name=text_.upper(), name_key=normalize_key(text_)))
+            )
         if text_.startswith("mail"):
             plan.after_commit.append(_mail_fails)
         return plan

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .actions import REGISTRY
@@ -80,6 +81,10 @@ def apply_plan(
         for write in plan.writes:
             write(session)
         session.commit()
+    except IntegrityError as exc:
+        # Someone else wrote the same name between our plan and our commit.
+        session.rollback()
+        raise PlanTokenError(409, "conflict") from exc
     except Exception:
         session.rollback()
         raise
