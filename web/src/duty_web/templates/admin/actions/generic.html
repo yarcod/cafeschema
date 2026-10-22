@@ -1,0 +1,26 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}{{ action.title }}{% endblock %}
+{% block content %}
+<div class="section-head"><h2>{{ action.title }}</h2></div>
+<form class="card" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for field, kind in fields.items() %}
+  <label class="field">
+    <span class="field-label">{{ labels.get(field, field) }}</span>
+    {% if field in choices %}
+    <select name="{{ field }}" class="admin-input">
+      {% if kind.endswith("?") %}<option value="">—</option>{% endif %}
+      {% for value, label in choices[field] %}
+      <option value="{{ value }}" {{ "selected" if form.get(field) == value|string }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <input name="{{ field }}" class="admin-input" value="{{ form.get(field, '') }}">
+    {% endif %}
+    {% if errors.get(field) %}<span class="field-error">{{ errors[field] }}</span>{% endif %}
+  </label>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Granska</button>
+  <p class="agent-hint">agent → <b>{{ action.name }}</b></p>
+</form>
+{% endblock %}

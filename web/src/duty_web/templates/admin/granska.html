@@ -1,0 +1,34 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Granska · {{ action.title }}{% endblock %}
+{% block content %}
+{% set signs = {"add": "+", "update": "~", "delete": "−"} %}
+<div class="section-head"><h2>Granska: {{ action.title }}</h2></div>
+{% set counts = plan.public()["counts"] %}
+<div class="diff-sum">
+  {% if counts.add %}<span class="add">+ {{ counts.add }} nya</span>{% endif %}
+  {% if counts.update %}<span class="update">~ {{ counts.update }} ändrade</span>{% endif %}
+  {% if counts.delete %}<span class="delete">− {{ counts.delete }} borttagna</span>{% endif %}
+</div>
+{% for warning in plan.warnings %}<div class="warn-note">{{ warning }}</div>{% endfor %}
+{% if plan.changes %}
+<ul class="diff">
+  {% for change in plan.changes %}
+  <li class="diff-row {{ change.op }}">
+    <span class="sign">{{ signs[change.op] }}</span>
+    <span class="what">{{ change.summary }}{% if change.detail %}<span class="sub">{{ change.detail }}</span>{% endif %}</span>
+  </li>
+  {% endfor %}
+</ul>
+<form method="post" action="{{ url_for('admin.genomfor', slug=ctx.team.slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="plan_token" value="{{ plan_token }}">
+  <button type="submit" class="btn btn-primary btn-block">Genomför {{ plan.changes|length }} {{ "ändring" if plan.changes|length == 1 else "ändringar" }}</button>
+</form>
+{% else %}
+<p class="empty-state">Inget att ändra. Allt stämmer redan.</p>
+{% endif %}
+<div class="inline-form">
+  <a class="btn btn-sm" href="{{ url_for(action.done_endpoint, slug=ctx.team.slug) }}">Avbryt</a>
+  <p class="agent-hint">agent → <b>{{ action.name }}</b> med <b>dry_run: true</b> ger samma lista</p>
+</div>
+{% endblock %}

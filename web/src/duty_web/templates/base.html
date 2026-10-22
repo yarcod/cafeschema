@@ -36,6 +36,9 @@
         <button type="button" id="btn-light" onclick="setTheme('light')" aria-label="Ljust läge">☀</button>
         <button type="button" id="btn-dark" onclick="setTheme('dark')" aria-label="Mörkt läge">☾</button>
       </div>
+      {% if is_admin %}
+      <a class="icon-btn admin-btn" href="{{ url_for('admin.home') }}" aria-label="Hantera" title="Hantera">✎</a>
+      {% endif %}
       {% if current_user.is_authenticated %}
       <a class="icon-btn {{ 'active' if request.endpoint == 'settings.installningar' }}"
          href="{{ url_for('settings.installningar') }}" aria-label="Inställningar" title="Inställningar">⚙</a>

@@ -264,3 +264,12 @@ def echo(app):
     yield action
     REGISTRY.pop(action.name, None)
     app.jinja_env.loader = original
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """The limiters are process-wide; ids restart in every test database."""
+    from duty_web.admin import ratelimit
+
+    ratelimit.api_limiter.reset()
+    ratelimit.admin_limiter.reset()

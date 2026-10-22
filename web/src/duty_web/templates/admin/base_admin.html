@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Admin{% endblock %} · Caféschema</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<script>
+  // Same theme as the parent app, applied before first paint.
+  (function () {
+    try {
+      var theme = localStorage.getItem('cafeschema-theme');
+      if (theme === 'light' || theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body class="admin-body">
+<div class="bench">
+  <div class="topbar">
+    <div class="brand"><div class="mark">C</div><div class="name">Caféschema · Admin</div></div>
+    <div class="topbar-actions">
+      {% if ctx.teams|length > 1 %}
+      <nav class="team-switch admin-teams" aria-label="Lag">
+        {% for team in ctx.teams %}
+        <a class="{{ 'active' if ctx.team and team.id == ctx.team.id }}" href="{{ url_for('admin.lag', slug=team.slug) }}">{{ team.name }}</a>
+        {% endfor %}
+      </nav>
+      {% elif ctx.team %}
+      <span class="admin-team-name">{{ ctx.team.name }}</span>
+      {% endif %}
+      <a class="icon-btn" href="{{ url_for('schedule.mine') }}" aria-label="Tillbaka till föräldravyn" title="Tillbaka till föräldravyn">←</a>
+    </div>
+  </div>
+  {% if ctx.team %}
+  <nav class="admin-nav">
+    <a class="{{ 'active' if request.endpoint == 'admin.lag' }}" href="{{ url_for('admin.lag', slug=ctx.team.slug) }}">Lag &amp; ansvariga</a>
+    {# anchor:nav #}
+  </nav>
+  {% endif %}
+  <main class="bench-main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

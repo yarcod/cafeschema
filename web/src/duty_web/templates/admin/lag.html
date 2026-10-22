@@ -1,0 +1,38 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Lag &amp; ansvariga · {{ ctx.team.name }}{% endblock %}
+{% block content %}
+{# Defined inside the block: in a child template, macros and sets outside
+   blocks are not reliably visible inside them. #}
+{% macro entry_row(entry, slug) %}
+{% set role_names = {"ansvarig": "Ansvarig", "leader": "Ledare"} %}
+<div class="roster-item">
+  <span class="pn">{{ entry.person|public_name }}</span>
+  <span class="actions">
+    {% for role in entry.roles|sort %}<span class="role {{ role }}">{{ role_names[role] }}</span>{% endfor %}
+    {# anchor:entry-actions #}
+  </span>
+  <span class="pr">Förälder till
+    {% for child in entry.children %}{{ child.name }}{% if child.exempt %} <span class="exempt">(står inte på pass)</span>{% endif %}{{ ", " if not loop.last }}{% endfor %}
+  </span>
+</div>
+{% endmacro %}
+<div class="section-head">
+  <h2>{{ ctx.team.name }}</h2>
+  <span class="count">{{ groups.ansvariga|length + groups.ledare|length + groups.foraldrar|length }} vårdnadshavare</span>
+</div>
+{% if done %}<div class="notice">Klart. Ändringarna är genomförda.</div>{% endif %}
+{# anchor:import #}
+<div class="card" style="gap:2px">
+  <div class="roster-group" style="margin-top:0">Ansvariga</div>
+  {% for entry in groups.ansvariga %}{{ entry_row(entry, ctx.team.slug) }}{% else %}<p class="hint">Ingen ansvarig i laget än.</p>{% endfor %}
+  <div class="roster-group">Ledare</div>
+  {% for entry in groups.ledare %}{{ entry_row(entry, ctx.team.slug) }}{% else %}<p class="hint">Inga ledare. De läses från 360Player.</p>{% endfor %}
+  <div class="roster-group">Föräldrar · {{ groups.foraldrar|length }}</div>
+  {% for entry in groups.foraldrar %}{{ entry_row(entry, ctx.team.slug) }}{% endfor %}
+  {% if groups.utan_foraldrar %}
+  <div class="roster-group">Spelare utan förälder i appen</div>
+  <p class="hint">{{ groups.utan_foraldrar|map(attribute="name")|join(", ") }}</p>
+  {% endif %}
+</div>
+{# anchor:keys #}
+{% endblock %}

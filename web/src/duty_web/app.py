@@ -11,6 +11,7 @@ from flask_login import LoginManager, UserMixin, current_user
 from flask_wtf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from .admin.permissions import admin_teams
 from .config import AppConfig
 from .db import init_db, make_engine, make_session_factory
 from .dates import MONTHS_SV, long_date_sv, short_date_sv, weekday_sv
@@ -141,12 +142,20 @@ def create_app(config: AppConfig) -> Flask:
             )
         }
 
+    @app.context_processor
+    def admin_link():
+        """✎ in the topbar, for anyone with an admin role somewhere."""
+        if not current_user.is_authenticated:
+            return {}
+        return {"is_admin": bool(admin_teams(get_session(), int(current_user.id)))}
+
     # Every route acquires its (request-scoped, flask.g-cached) session via
     # get_session() instead of calling the session factory directly; this
     # closes it once the response is built, returning its connection to the
     # pool rather than relying on GC/refcounting (see session_scope.py).
     app.teardown_appcontext(close_session)
 
+    from .routes.admin_routes import admin_bp
     from .routes.auth_routes import auth_bp
     from .routes.document_routes import document_bp
     from .routes.schedule_routes import schedule_bp
@@ -165,6 +174,7 @@ def create_app(config: AppConfig) -> Flask:
     app.register_blueprint(schedule_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(swap_bp)
+    app.register_blueprint(admin_bp)
 
     # The login/verify flow is unauthenticated by nature (that's the point
     # of a magic link) and self-limits via the login-token rate limit and
