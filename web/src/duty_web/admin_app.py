@@ -12,6 +12,7 @@ from flask import Flask, jsonify, request
 
 from .config import AppConfig
 from .db import init_db, make_engine, make_session_factory
+from .places import link_unlinked_slots
 from .roster import RosterError, import_roster
 from .seed import SeedError, import_schedule
 
@@ -37,6 +38,10 @@ def create_admin_app(config: AppConfig) -> Flask:
             try:
                 try:
                     count = import_schedule(session, path, team_id=team_id)
+                    # The import writes text only; link it to the places that
+                    # exist now, so Platser changes apply without a restart.
+                    link_unlinked_slots(session)
+                    session.commit()
                 except SeedError as exc:
                     return jsonify({"error": str(exc)}), 400
             finally:

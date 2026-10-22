@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from .models import Station, Venue
+from .models import Slot, Station, Venue
 from .names import normalize_key
 
 
@@ -120,3 +120,34 @@ def linkable_documents() -> list[DocumentFile]:
 
     root = Path(current_app.extensions["duty_web_app_config"].documents_dir)
     return list_documents(root, [])
+
+
+def link_unlinked_slots(session: Session) -> tuple[int, int]:
+    """Link slots without a station to stations that already exist.
+
+    By the duty's profile, else the slot's own venue and station text. Never
+    creates a venue or station and never touches a document: a place the
+    ansvariga removed or left out stays that way. Returns (linked, unlinked);
+    a slot with no match is left for an ansvarig to place. Flushes, never commits.
+    """
+    from .duties import profile_for
+
+    linked = unlinked = 0
+    for slot in session.query(Slot).filter(Slot.station_id.is_(None)).all():
+        profile = profile_for(slot.duty_name)
+        venue_name, station_name = (
+            (profile.venue, profile.station) if profile else (slot.venue, slot.station)
+        )
+        venue = find_venue(session, venue_name) if normalize_key(venue_name) else None
+        station = (
+            find_station(session, venue, station_name)
+            if venue and normalize_key(station_name)
+            else None
+        )
+        if station is None:
+            unlinked += 1
+            continue
+        slot.station_id = station.id
+        linked += 1
+    session.flush()
+    return linked, unlinked

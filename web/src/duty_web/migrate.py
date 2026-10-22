@@ -30,7 +30,7 @@ from .db import init_db, make_engine, make_session_factory
 from .duties import DUTY_PROFILES, profile_for
 from .models import Slot, Station
 from .names import normalize_key
-from .places import find_or_create_station, find_station, find_venue
+from .places import find_or_create_station, link_unlinked_slots
 
 NEW_COLUMNS = {
     "slots": ("station_id", "INTEGER REFERENCES stations (id)"),
@@ -74,24 +74,19 @@ def migrate(db_path: str) -> MigrationReport:
                 if station.document is None:
                     station.document = profile.document
 
-        for slot in session.query(Slot).filter(Slot.station_id.is_(None)).all():
-            profile = profile_for(slot.duty_name)
-            venue_name, station_name = (
-                (profile.venue, profile.station) if profile else (slot.venue, slot.station)
-            )
-            if not normalize_key(venue_name) or not normalize_key(station_name):
-                report.slots_unlinked += 1
-                continue
-            if first_run:
-                station = find_or_create_station(session, venue_name, station_name)
-            else:
-                venue = find_venue(session, venue_name)
-                station = find_station(session, venue, station_name) if venue else None
-            if station is None:
-                report.slots_unlinked += 1
-                continue
-            slot.station_id = station.id
-            report.slots_linked += 1
+        if first_run:
+            # Only now may a slot's own text create its place (linked just
+            # below); afterwards the tables belong to the ansvariga.
+            for slot in session.query(Slot).filter(Slot.station_id.is_(None)).all():
+                profile = profile_for(slot.duty_name)
+                venue_name, station_name = (
+                    (profile.venue, profile.station) if profile else (slot.venue, slot.station)
+                )
+                if normalize_key(venue_name) and normalize_key(station_name):
+                    find_or_create_station(session, venue_name, station_name)
+            session.flush()
+
+        report.slots_linked, report.slots_unlinked = link_unlinked_slots(session)
 
         report.stations_created = session.query(Station).count() - before
         session.commit()

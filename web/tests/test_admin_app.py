@@ -126,3 +126,34 @@ def test_admin_roster_reports_a_bad_file_as_400():
 
     assert response.status_code == 400
     assert "kolumn" in response.get_data(as_text=True)
+
+
+def test_a_schedule_push_links_slots_to_existing_stations_at_once():
+    from duty_web.models import Station
+    from duty_web.places import document_for_slot, find_or_create_station
+
+    app, session_factory = make_app_and_session()
+    session = session_factory()
+    team = seeded_team(session)
+    station = find_or_create_station(session, "Hallen", "Kiosk")
+    session.commit()
+    client = app.test_client()
+
+    data = {
+        "team_id": str(team.id),
+        "file": (xlsx_bytes([
+            [2026, "Tombola", "Hallen", "Kiosk", 3, "2026-01-16",
+             "fredag", "10:00-12:00", "Tova Exempel", ""],
+        ]), "schema.xlsx"),
+    }
+    assert client.post("/admin/import", data=data).status_code == 200
+
+    session.expire_all()
+    slot = session.query(Slot).one()
+    assert slot.station_id == station.id
+    assert document_for_slot(slot) is None
+
+    session.get(Station, station.id).document = "Kiosk.pdf"
+    session.commit()
+    session.expire_all()
+    assert document_for_slot(session.query(Slot).one()) == "Kiosk.pdf"
