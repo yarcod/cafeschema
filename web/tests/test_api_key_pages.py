@@ -81,3 +81,12 @@ def test_an_ansvarig_cannot_revoke_others_or_see_the_list(client, admins, csrf_t
     assert client.post(
         f"/admin/f14-bla/nycklar/{row.id}/aterkalla", data={"csrf_token": csrf_token()}
     ).status_code == 404
+
+
+def test_the_key_card_is_in_the_page_body_not_the_title(client, admins):
+    login(client, admins["ansvarig"])
+
+    body = client.get("/installningar").get_data(as_text=True)
+
+    assert re.search(r"<title>(.*?)</title>", body, re.S).group(1) == "Caféschema — Inställningar"
+    assert body.index('action="/installningar/nycklar"') > body.index("</title>")

@@ -13,6 +13,7 @@ from ..admin.executor import apply_plan, dry_run, scope_allows
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.roster_view import roster_groups
+from ..clock import utcnow
 from ..models import ROLE_ANSVARIG, ApiKey, Person, TeamRole
 from ..session_scope import get_session as _session
 
@@ -67,6 +68,7 @@ def lag(slug: str):
                 TeamRole.team_id == ctx.team.id,
                 TeamRole.role == ROLE_ANSVARIG,
                 ApiKey.revoked_at.is_(None),
+                ApiKey.expires_at > utcnow(),
             )
             .order_by(ApiKey.created_at)
             .all()
