@@ -155,6 +155,7 @@ def create_app(config: AppConfig) -> Flask:
     # pool rather than relying on GC/refcounting (see session_scope.py).
     app.teardown_appcontext(close_session)
 
+    from .routes.admin_api import api_bp
     from .routes.admin_routes import admin_bp
     from .routes.auth_routes import auth_bp
     from .routes.document_routes import document_bp
@@ -175,11 +176,15 @@ def create_app(config: AppConfig) -> Flask:
     app.register_blueprint(settings_bp)
     app.register_blueprint(swap_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp)
 
     # The login/verify flow is unauthenticated by nature (that's the point
     # of a magic link) and self-limits via the login-token rate limit and
     # the emailed link itself, so it's exempt from CSRF rather than needing
     # a session-bound token before a session exists.
     csrf.exempt(auth_bp)
+    # The admin API never reads the session cookie: a Bearer key is its only
+    # credential, so there is no ambient authority for CSRF to protect.
+    csrf.exempt(api_bp)
 
     return app

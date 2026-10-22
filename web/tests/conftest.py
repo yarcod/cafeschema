@@ -273,3 +273,18 @@ def _fresh_rate_limits():
 
     ratelimit.api_limiter.reset()
     ratelimit.admin_limiter.reset()
+
+
+def bearer(key):
+    return {"Authorization": f"Bearer {key}"}
+
+
+@pytest.fixture
+def api_keys(session_factory, admins):
+    from duty_web.admin.api_keys import create_api_key
+
+    session = session_factory()
+    return {
+        who: create_api_key(session, admins[who].id)[1]
+        for who in ("ansvarig", "club", "parent")
+    }
