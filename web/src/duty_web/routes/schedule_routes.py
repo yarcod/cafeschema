@@ -10,7 +10,7 @@ from flask_login import current_user, login_required
 
 from ..models import Slot
 from ..roster import teams_for_parent
-from .document_routes import instruction_url_for_duty
+from .document_routes import instruction_url_for_slot
 from ..schedule_queries import (
     shift_mates_for,
     slots_for_parent,
@@ -188,9 +188,7 @@ def api_schedule():
             # The app owns the documents, so it is the one that knows which
             # instruction a duty needs — the mailer just puts the link in the
             # mail. None when the duty has no instruction on the volume.
-            "document_url": instruction_url_for_duty(
-                slot.duty_name, slot.team.slug, external=True
-            ),
+            "document_url": instruction_url_for_slot(slot, external=True),
             "child_name": slot.player.name,
             "player": {"name": slot.player.name},
             "parents": [

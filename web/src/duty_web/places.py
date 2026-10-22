@@ -42,3 +42,25 @@ def find_or_create_station(session: Session, venue_name: str, station_name: str)
         session.add(station)
         session.flush()
     return station
+
+
+# Anything a parent could reasonably need to read on a phone. Kept to a
+# known list so a stray file on the volume can't be served as something the
+# browser will execute.
+ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".txt", ".md"}
+
+
+def document_for_slot(slot) -> str | None:
+    """The instruction filename this slot links, or None.
+
+    A linked station is authoritative, including when it has no instruction:
+    the station is the ansvarig's decision. Only slots without a station yet
+    (imported by the old schedule-push since the last migration) fall back to
+    duties.py, the way every slot did before.
+    """
+    from .duties import profile_for
+
+    if slot.station_row is not None:
+        return slot.station_row.document
+    profile = profile_for(slot.duty_name)
+    return profile.document if profile else None

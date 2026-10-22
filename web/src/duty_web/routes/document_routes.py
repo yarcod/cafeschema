@@ -30,16 +30,11 @@ from flask import (
 from flask_login import current_user, login_required
 
 from ..duties import profile_for
+from ..places import ALLOWED_SUFFIXES, document_for_slot
 from ..roster import teams_for_parent
 from ..session_scope import get_session as _session
 
 document_bp = Blueprint("documents", __name__)
-
-# Anything a parent could reasonably need to read on a phone. Kept to a
-# known list so a stray file on the volume can't be served as something the
-# browser will execute.
-ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".txt", ".md"}
-
 
 def _documents_dir() -> Path:
     return Path(current_app.extensions["duty_web_app_config"].documents_dir)
@@ -65,28 +60,40 @@ def _documents(directory: Path, slug: str | None = None) -> list[dict]:
     ]
 
 
-def instruction_url_for_duty(
-    duty_name: str | None, team_slug: str | None = None, *, external: bool = False
+def _url_for_document(
+    document: str | None, team_slug: str | None, *, external: bool
 ) -> str | None:
-    """This duty's own instruction, or None if there isn't one to link to.
+    """Where a named instruction can be downloaded, or None if it isn't there.
 
     The team's own copy wins over the shared one. None also covers "mapped,
     but not uploaded yet": a link to a file the volume doesn't have would
     404 on the morning of the shift.
     """
-    profile = profile_for(duty_name)
-    if profile is None or not profile.document:
+    if not document:
         return None
-    if team_slug and (_documents_dir() / team_slug / profile.document).is_file():
+    if team_slug and (_documents_dir() / team_slug / document).is_file():
         return url_for(
-            "documents.team_download", slug=team_slug, filename=profile.document,
+            "documents.team_download", slug=team_slug, filename=document,
             _external=external,
         )
-    if (_documents_dir() / profile.document).is_file():
-        return url_for(
-            "documents.download", filename=profile.document, _external=external
-        )
+    if (_documents_dir() / document).is_file():
+        return url_for("documents.download", filename=document, _external=external)
     return None
+
+
+def instruction_url_for_duty(
+    duty_name: str | None, team_slug: str | None = None, *, external: bool = False
+) -> str | None:
+    """This duty's own instruction per duties.py, or None."""
+    profile = profile_for(duty_name)
+    return _url_for_document(
+        profile.document if profile else None, team_slug, external=external
+    )
+
+
+def instruction_url_for_slot(slot, *, external: bool = False) -> str | None:
+    """This slot's own instruction: its station's, or its duty's until linked."""
+    return _url_for_document(document_for_slot(slot), slot.team.slug, external=external)
 
 
 def document_url_for_duty(
@@ -100,7 +107,7 @@ def document_url_for_duty(
 
 
 def document_url_for_slot(slot) -> str:
-    return document_url_for_duty(slot.duty_name, slot.team.slug)
+    return instruction_url_for_slot(slot) or url_for("documents.dokument")
 
 
 @document_bp.route("/dokument")
