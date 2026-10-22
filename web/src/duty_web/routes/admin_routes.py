@@ -15,7 +15,7 @@ from ..admin.permissions import AdminContext, admin_context, admin_teams
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
-from ..models import ROLE_ANSVARIG, ApiKey, Person, Slot, TeamRole, Venue
+from ..models import ApiKey, Person, Slot, Venue
 from ..places import linkable_documents, rank_documents
 from ..session_scope import get_session as _session
 
@@ -63,16 +63,12 @@ def lag(slug: str):
     session = _session()
     team_keys = []
     if ctx.is_club_admin:
+        # Every active key in the club, not just current ansvariga's: a key
+        # outlives the role it was made under and must stay revocable.
         team_keys = (
             session.query(ApiKey)
-            .join(TeamRole, TeamRole.person_id == ApiKey.person_id)
-            .filter(
-                TeamRole.team_id == ctx.team.id,
-                TeamRole.role == ROLE_ANSVARIG,
-                ApiKey.revoked_at.is_(None),
-                ApiKey.expires_at > utcnow(),
-            )
-            .order_by(ApiKey.created_at)
+            .filter(ApiKey.revoked_at.is_(None), ApiKey.expires_at > utcnow())
+            .order_by(ApiKey.created_at, ApiKey.id)
             .all()
         )
     return render_template(

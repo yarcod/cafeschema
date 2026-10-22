@@ -90,3 +90,27 @@ def test_the_key_card_is_in_the_page_body_not_the_title(client, admins):
 
     assert re.search(r"<title>(.*?)</title>", body, re.S).group(1) == "Caféschema — Inställningar"
     assert body.index('action="/installningar/nycklar"') > body.index("</title>")
+
+
+def test_a_club_admin_lists_every_active_key_club_wide(client, admins, csrf_token, session_factory):
+    from datetime import timedelta
+
+    from duty_web.clock import utcnow
+
+    session = session_factory()
+    own, _ = create_api_key(session, admins["club"].id)
+    # Someone who is no longer ansvarig anywhere: the key must still be revocable.
+    former, _ = create_api_key(session, admins["parent"].id)
+    revoked, _ = create_api_key(session, admins["ansvarig"].id)
+    revoked.revoked_at = utcnow()
+    expired, _ = create_api_key(session, admins["ansvarig"].id)
+    expired.expires_at = utcnow() - timedelta(days=1)
+    session.commit()
+    login(client, admins["club"])
+
+    page = client.get("/admin/f14-bla/lag").get_data(as_text=True)
+    assert own.prefix in page and former.prefix in page
+    assert revoked.prefix not in page and expired.prefix not in page
+    client.post(f"/admin/f14-bla/nycklar/{former.id}/aterkalla", data={"csrf_token": csrf_token()})
+
+    assert session_factory().get(ApiKey, former.id).revoked_at is not None

@@ -47,7 +47,7 @@
 </div>
 {% if team_keys %}
 <div class="card">
-  <div class="card-head"><h3>API-nycklar</h3><span class="hint">Ansvarigas agenter i {{ ctx.team.name }}</span></div>
+  <div class="card-head"><h3>API-nycklar</h3><span class="hint">Alla aktiva nycklar i föreningen</span></div>
   {% for key in team_keys %}
   <div class="roster-item">
     <span class="pn"><code>{{ key.prefix }}…</code> · {{ key.person|public_name }}</span>
