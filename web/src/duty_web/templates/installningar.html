@@ -1,5 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Caféschema — Inställningar{% endblock %}
+{% block title %}Caféschema — Inställningar{% if is_admin %}
+<div class="settings-card" id="api-nycklar">
+  <span class="settings-label">API-nyckel för agent</span>
+  <p class="switch-help">En agent med nyckeln får samma behörighet som du, i de lag där du är ansvarig.
+    Nyckeln visas bara en gång. Spara den i din lösenordshanterare.</p>
+  {% for key in api_keys %}
+  <div class="send-row" style="justify-content:space-between;align-items:center;gap:8px">
+    <span class="switch-help"><code>{{ key.prefix }}…</code> · skapad {{ key.created_at.date().isoformat() }} ·
+      {{ ("använd " ~ key.last_used_at.date().isoformat()) if key.last_used_at else "aldrig använd" }} ·
+      gäller till {{ key.expires_at.date().isoformat() }}</span>
+    <form method="post" action="{{ url_for('settings.revoke_key', key_id=key.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-sm">Återkalla</button>
+    </form>
+  </div>
+  {% endfor %}
+  <form method="post" action="{{ url_for('settings.create_key') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary btn-sm">Skapa ny nyckel</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
 {% block content %}
 <div class="section-head">
   <h2>Inställningar</h2>

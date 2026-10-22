@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Caféschema — Ny API-nyckel{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Ny API-nyckel</h2></div>
+<div class="magic-sent">
+  <span class="headline">Kopiera nyckeln nu. Den visas bara en gång.</span>
+  <span class="detail">Spara den i din lösenordshanterare och ge den bara till din egen agent.
+    Tappar du bort den: återkalla den under Inställningar och skapa en ny.</span>
+</div>
+<div class="settings-card">
+  <span class="settings-label">Nyckel {{ prefix }}</span>
+  <code style="word-break:break-all;font-size:13px">{{ plaintext }}</code>
+  <p class="settings-note">Agenten skickar den som <code>Authorization: Bearer …</code> till <code>/admin/api</code>.</p>
+</div>
+<a class="btn btn-sm" href="{{ url_for('settings.installningar') }}#api-nycklar">Klar</a>
+{% endblock %}

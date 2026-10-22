@@ -6,13 +6,14 @@ from flask import Blueprint, abort, current_app, redirect, render_template, requ
 from flask_login import current_user, login_required
 
 from ..admin import ratelimit
+from ..admin.api_keys import revoke_api_key
 from ..admin.actions import REGISTRY
 from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_schema
 from ..admin.executor import apply_plan, dry_run, scope_allows
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.roster_view import roster_groups
-from ..models import Person
+from ..models import ROLE_ANSVARIG, ApiKey, Person, TeamRole
 from ..session_scope import get_session as _session
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -56,9 +57,23 @@ def home():
 @login_required
 def lag(slug: str):
     ctx = _context(slug)
+    session = _session()
+    team_keys = []
+    if ctx.is_club_admin:
+        team_keys = (
+            session.query(ApiKey)
+            .join(TeamRole, TeamRole.person_id == ApiKey.person_id)
+            .filter(
+                TeamRole.team_id == ctx.team.id,
+                TeamRole.role == ROLE_ANSVARIG,
+                ApiKey.revoked_at.is_(None),
+            )
+            .order_by(ApiKey.created_at)
+            .all()
+        )
     return render_template(
-        "admin/lag.html", ctx=ctx, groups=roster_groups(_session(), ctx.team),
-        done=request.args.get("klart"),
+        "admin/lag.html", ctx=ctx, groups=roster_groups(session, ctx.team),
+        team_keys=team_keys, done=request.args.get("klart"),
     )
 
 
@@ -108,3 +123,13 @@ def genomfor(slug: str):
             abort(404)
         return render_template("admin/stale.html", ctx=ctx, code=exc.code), exc.status
     return redirect(url_for(action.done_endpoint, slug=slug, klart=action.name))
+
+
+@admin_bp.route("/<slug>/nycklar/<int:key_id>/aterkalla", methods=["POST"])
+@login_required
+def revoke_key(slug: str, key_id: int):
+    ctx = _context(slug)
+    # A club admin may revoke anyone's key, never see or make one.
+    if not ctx.is_club_admin or revoke_api_key(_session(), key_id) is None:
+        abort(404)
+    return redirect(url_for("admin.lag", slug=slug, klart="api_key.revoke"))
