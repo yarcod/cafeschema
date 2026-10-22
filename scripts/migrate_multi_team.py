@@ -45,6 +45,19 @@ def _unique_column_sets(connection: sqlite3.Connection, table: str) -> set[tuple
     return sets
 
 
+def _add_slot_station_id(connection: sqlite3.Connection) -> bool:
+    """Add the nullable slots.station_id link if missing. True if added.
+
+    Nullable, so no backfill: migrate.py links the slots to stations later.
+    """
+    if "station_id" in _columns(connection, "slots"):
+        return False
+    connection.execute(
+        "ALTER TABLE slots ADD COLUMN station_id INTEGER REFERENCES stations(id)"
+    )
+    return True
+
+
 def _add_team_slug(connection: sqlite3.Connection, slug: str) -> bool:
     """Make sure every team has a slug. True if anything was written.
 
@@ -107,7 +120,10 @@ def _rebuild(connection: sqlite3.Connection, engine, table: str) -> None:
     if not ddl.startswith(prefix):
         raise SystemExit(f"Oväntad DDL för {table}: {ddl[:60]}")
     ddl = ddl.replace(prefix, f"CREATE TABLE {table}_new (", 1)
-    columns = ", ".join(column.name for column in model_table.columns)
+    # Copy only the columns the old table has (columns added to the model
+    # after this migration's era take their defaults).
+    existing = _columns(connection, table)
+    columns = ", ".join(c.name for c in model_table.columns if c.name in existing)
 
     baseline = _violations(connection)
     connection.execute("PRAGMA foreign_keys=OFF")
@@ -166,6 +182,9 @@ def main(argv: list[str]) -> int:
         else:
             _rebuild(connection, engine, "teams")
             print("teams: ombyggd med unik slug")
+
+        added = _add_slot_station_id(connection)
+        print(f"slots.station_id: {'tillagd' if added else 'fanns redan'}")
 
         if ("team_id", "name") in _unique_column_sets(connection, "players"):
             print("players: namn per lag fanns redan")
