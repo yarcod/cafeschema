@@ -111,3 +111,64 @@ def test_a_linked_station_keeps_an_instruction_set_by_hand(tmp_path):
     migrate(path)
 
     assert _session(path).get(Slot, 1).station_row.document == "Annan_instruktion.pdf"
+
+
+def _add_slot(path, slot_id, duty, venue="", station=""):
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO slots (id, team_id, date, start_time, end_time, station, duty_name, venue, "
+        "child_name, player_id) VALUES (?, 1, '2027-01-10', '10:00:00.000000', '12:00:00.000000', "
+        "?, ?, ?, 'Klara', 7)",
+        (slot_id, station, duty, venue),
+    )
+    connection.commit()
+    connection.close()
+
+
+def test_a_document_unlinked_in_the_admin_stays_unlinked(tmp_path):
+    path = _pre_admin_db(tmp_path)
+    migrate(path)
+    session = _session(path)
+    session.get(Slot, 1).station_row.document = None
+    session.commit()
+
+    migrate(path)
+
+    assert _session(path).get(Slot, 1).station_row.document is None
+
+
+def test_a_later_slot_is_linked_to_an_existing_station(tmp_path):
+    path = _pre_admin_db(tmp_path)
+    migrate(path)
+    _add_slot(path, 10, "Kioskpass", "Mölnlycke idrottshall", "Kiosk")
+
+    report = migrate(path)
+
+    assert (report.stations_created, report.slots_linked) == (0, 1)
+    assert _session(path).get(Slot, 10).station_row.name == "Kiosk"
+
+
+def test_a_later_slot_at_an_unknown_place_stays_unlinked(tmp_path):
+    path = _pre_admin_db(tmp_path)
+    migrate(path)
+    _add_slot(path, 10, "Annat", "Okänd hall", "Grillen")
+
+    report = migrate(path)
+
+    assert (report.stations_created, report.slots_linked, report.slots_unlinked) == (0, 0, 2)
+    session = _session(path)
+    assert session.get(Slot, 10).station_id is None
+    assert session.query(Station).count() == 4
+
+
+def test_a_database_with_station_id_but_no_stations_table_migrates(tmp_path):
+    path = _pre_admin_db(tmp_path)
+    connection = sqlite3.connect(path)
+    connection.execute("ALTER TABLE slots ADD COLUMN station_id INTEGER REFERENCES stations (id)")
+    connection.commit()
+    connection.close()
+
+    report = migrate(path)
+
+    assert report.columns_added == ["players.exempt"]
+    assert report.slots_linked == 3

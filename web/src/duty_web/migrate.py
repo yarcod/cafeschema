@@ -5,13 +5,15 @@ database, so a deploy never serves code against a file that lacks its
 columns. New tables come from create_all; new columns on existing tables
 need ALTER TABLE, which create_all never does.
 
-The data half moves duties.py's hardcoded venues, cafés and instructions
-into the venues/stations tables, and links each slot that has no station
-yet: by its duty's profile when it has one, otherwise by the venue and
-station text on the slot itself. A slot with neither is left for an
-ansvarig to place. Re-running links slots imported since (the old
-schedule-push writes text only) and changes nothing else; an instruction
-an ansvarig has linked by hand is never overwritten.
+The data half runs its seeding once, while the stations table is empty:
+it moves duties.py's hardcoded venues, cafés and instructions into the
+venues/stations tables and creates stations from the text on slots. After
+that the tables belong to the ansvariga: later runs never create or rename
+a station and never touch a document, so an unlink or a delete done in the
+admin is not undone at the next start. Every run still links slots that
+have no station yet (the old schedule-push writes text only), by their
+duty's profile or their own venue and station text, but only to stations
+that already exist; a slot with no match is left for an ansvarig to place.
 
     python -m duty_web.migrate [db_path]
 """
@@ -28,7 +30,7 @@ from .db import init_db, make_engine, make_session_factory
 from .duties import DUTY_PROFILES, profile_for
 from .models import Slot, Station
 from .names import normalize_key
-from .places import find_or_create_station
+from .places import find_or_create_station, find_station, find_venue
 
 NEW_COLUMNS = {
     "slots": ("station_id", "INTEGER REFERENCES stations (id)"),
@@ -65,20 +67,30 @@ def migrate(db_path: str) -> MigrationReport:
     session = make_session_factory(engine)()
     try:
         before = session.query(Station).count()
-        for profile in DUTY_PROFILES.values():
-            station = find_or_create_station(session, profile.venue, profile.station)
-            if station.document is None:
-                station.document = profile.document
+        first_run = before == 0
+        if first_run:
+            for profile in DUTY_PROFILES.values():
+                station = find_or_create_station(session, profile.venue, profile.station)
+                if station.document is None:
+                    station.document = profile.document
 
         for slot in session.query(Slot).filter(Slot.station_id.is_(None)).all():
             profile = profile_for(slot.duty_name)
-            venue, station_name = (
+            venue_name, station_name = (
                 (profile.venue, profile.station) if profile else (slot.venue, slot.station)
             )
-            if not normalize_key(venue) or not normalize_key(station_name):
+            if not normalize_key(venue_name) or not normalize_key(station_name):
                 report.slots_unlinked += 1
                 continue
-            slot.station_id = find_or_create_station(session, venue, station_name).id
+            if first_run:
+                station = find_or_create_station(session, venue_name, station_name)
+            else:
+                venue = find_venue(session, venue_name)
+                station = find_station(session, venue, station_name) if venue else None
+            if station is None:
+                report.slots_unlinked += 1
+                continue
+            slot.station_id = station.id
             report.slots_linked += 1
 
         report.stations_created = session.query(Station).count() - before
