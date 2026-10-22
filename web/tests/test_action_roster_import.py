@@ -70,7 +70,7 @@ def test_a_new_family_comes_with_its_link(session_factory, admins):
     plan = _apply(session_factory, admins, *TEAM, "Ida,Ny,,,Kim Ny,", "Kim,Ny,kim@exempel.se,,,Ida Ny")
 
     assert "Ny spelare: Ida Ny" in _summaries(plan)
-    assert any(c.summary == "Ny vårdnadshavare: Kim Ny" and c.detail == "till Ida Ny" for c in plan.changes)
+    assert any(c.summary == "Vårdnadshavare kopplas" and c.detail == "Kim Ny → Ida Ny" for c in plan.changes)
     kim = session_factory().query(Person).filter_by(email="kim@exempel.se").one()
     assert [p.name for p in kim.players] == ["Ida Ny"]
 
@@ -270,3 +270,36 @@ def test_a_body_over_2mb_gets_413(client, admins, csrf_token):
     )
 
     assert response.status_code == 413
+
+
+def test_the_two_step_rename_of_another_teams_parent_is_closed(session_factory, admins):
+    rows = (*TEAM, "Anna,Annan,nora@exempel.se,,,Tova Exempel")
+    _apply(session_factory, admins, *rows)
+
+    _, _, plan, _ = _plan(session_factory, admins, *rows)
+    _apply(session_factory, admins, *rows)
+
+    text = json.dumps(plan.public(), ensure_ascii=False)
+    assert "Nora" not in text and "@" not in text
+    nora = session_factory().query(Person).filter_by(email="nora@exempel.se").one()
+    assert nora.name == "Nora Främling"
+
+
+def test_a_new_and_an_existing_address_read_the_same_in_the_plan(session_factory, admins):
+    def lines(email):
+        _, _, plan, _ = _plan(session_factory, admins, *TEAM, "Ida,Ny,,,Anna Annan,",
+                              f"Anna,Annan,{email},,,Ida Ny")
+        return [(c.op, c.kind, c.summary, c.detail) for c in plan.changes if "Annan" in (c.detail or "")]
+
+    assert lines("nora@exempel.se") == lines("helt-ny@exempel.se") != []
+
+
+def test_a_600kb_pasted_csv_reaches_the_1mb_check(client, admins, csrf_token):
+    pad = "\n".join(f"Fyll{i},Fyllnad,,,Fy Fyllnad{i}," for i in range(20000))
+    text = export(*TEAM, pad).decode("utf-8")
+    assert 500_000 < len(text.encode()) < 1_000_000
+    login(client, admins["ansvarig"])
+
+    response = client.post("/admin/f14-bla/do/roster.import", data={"csrf_token": csrf_token(), "csv": text})
+
+    assert response.status_code == 200

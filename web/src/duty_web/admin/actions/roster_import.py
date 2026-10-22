@@ -49,19 +49,22 @@ def _reconcile(session: Session, team: Team, roster: Roster) -> tuple[Plan, _Del
     plan, delta = Plan(), _Delta()
     players = {normalize_name(p.name): p for p in session.query(Player).filter_by(team_id=team.id).order_by(Player.id)}
     people = {p.email: p for p in session.query(Person).order_by(Person.id)}
-    # Only people already tied to THIS team may be renamed or have their stored
-    # name shown; anyone else matched by email is linked, never touched.
-    team_people = {
-        pid for (pid,) in session.query(parent_players.c.person_id)
-        .join(Player, Player.id == parent_players.c.player_id)
-        .filter(Player.team_id == team.id)
-    } | {pid for (pid,) in session.query(TeamRole.person_id).filter_by(team_id=team.id)}
     links = {
         (person_id, player_id)
         for person_id, player_id in session.query(
             parent_players.c.person_id, parent_players.c.player_id
         )
     }
+
+    # Renamed (and named from the DB) only when every tie is to THIS team and
+    # there is at least one; anyone else matched by email is linked, never touched.
+    team_of = {pid: tid for pid, tid in session.query(Player.id, Player.team_id)}
+    ties: dict[int, set[int]] = {}
+    for person_id, player_id in links:
+        ties.setdefault(person_id, set()).add(team_of[player_id])
+    for person_id, team_id in session.query(TeamRole.person_id, TeamRole.team_id):
+        ties.setdefault(person_id, set()).add(team_id)
+    team_people = {pid for pid, teams in ties.items() if teams == {team.id}}
 
     def player_name(key: str) -> str:
         return players[key].name if key in players else roster.players.get(key, key)
@@ -75,8 +78,6 @@ def _reconcile(session: Session, team: Team, roster: Roster) -> tuple[Plan, _Del
         guardian, person = roster.guardians[email], people.get(email)
         if person is None:
             delta.new_people.append((email, guardian.name))
-            plan.add("add", "parent", f"Ny vårdnadshavare: {guardian.name}",
-                     "till " + ", ".join(sorted(player_name(k) for k in guardian.children)))
         elif person.id in team_people and guardian.name and person.name != guardian.name:
             delta.renames.append((person.id, guardian.name))
             plan.add("update", "parent", "Namn ändrat", f"{public_name(person)} → {guardian.name}")
@@ -85,8 +86,8 @@ def _reconcile(session: Session, team: Team, roster: Roster) -> tuple[Plan, _Del
             if person is not None and player is not None and (person.id, player.id) in links:
                 continue
             delta.new_links.append((email, key))
-            if person is not None:  # a new guardian's links are on their own line
-                plan.add("add", "link", f"{guardian.name} kopplas till {player_name(key)}")
+            # Same wording whether or not the address is already known.
+            plan.add("add", "link", "Vårdnadshavare kopplas", f"{guardian.name} → {player_name(key)}")
 
     current = session.query(TeamRole).filter_by(team_id=team.id, role=ROLE_LEADER).all()
     current_ids = {role.person_id for role in current}

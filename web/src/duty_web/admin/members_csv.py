@@ -84,10 +84,10 @@ def interpret(rows: list[dict]) -> Roster:
         # named on a guardian's row, is not a player here.
         known = {normalize_name(c) for c in row["children"]} & set(roster.players)
         missing |= {normalize_name(c) for c in row["children"]} - set(roster.players)
+        if not known:
+            continue
         if not row["email"]:
             roster.guardians_without_email += 1
-            continue
-        if not known:
             continue
         guardian = roster.guardians.setdefault(row["email"], Guardian(row["name"]))
         guardian.children.update(known)

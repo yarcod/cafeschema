@@ -42,6 +42,8 @@ def create_app(config: AppConfig) -> Flask:
     app.request_class = _InMemoryUploads
     # Refused with 413 before anything is parsed.
     app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
+    # Flask's 500 KB default would refuse a pasted csv field the action allows.
+    app.config["MAX_FORM_MEMORY_SIZE"] = 2 * 1024 * 1024
 
     # Fly's proxy terminates TLS and forwards plain HTTP, so without this
     # url_for(_external=True) builds http:// links — and the magic-link

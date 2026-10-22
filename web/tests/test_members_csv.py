@@ -82,3 +82,12 @@ def test_a_child_without_a_player_row_is_not_a_player_here():
     assert roster.players == {"moa granne": "Moa Granne"}
     assert roster.guardians["maja@exempel.se"].children == {"moa granne"}
     assert roster.children_without_row == 1
+
+
+def test_a_guardian_of_another_teams_children_is_not_counted_as_missing_email():
+    roster = interpret(parse_members_csv(export(
+        "Moa,Granne,,,Maja Granne,",
+        "Utan,Post,,,,Syskon Granne",
+    )))
+
+    assert roster.guardians_without_email == 0 and roster.children_without_row == 1
