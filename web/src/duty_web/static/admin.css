@@ -66,3 +66,17 @@ body.admin-body { padding-block: 24px; }
 @media (max-width: 640px) {
   .bench { margin-inline: 0; border-radius: 0; border-inline: none; }
 }
+
+/* Platser */
+.venue { border: 2px solid var(--ink); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.venue-head { display: flex; justify-content: space-between; align-items: baseline; padding: 11px 13px; background: var(--surface-2); border-bottom: 2px solid var(--ink); }
+.venue-head .v-name { font-family: 'Fraunces', serif; font-weight: 800; font-size: 15px; }
+.venue-head .v-meta { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-dim); font-weight: 600; }
+.station { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; padding: 10px 13px; border-bottom: 1px solid var(--line); align-items: center; }
+.station .s-name { font-size: 13px; font-weight: 800; }
+.station .s-use { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-dim); text-align: right; }
+.station .s-doc { font-size: 11.5px; font-weight: 700; }
+.station .s-doc.ok { color: var(--accent); }
+.station .s-doc.missing { color: var(--warm); }
+.station .s-link { grid-column: 1 / -1; }
+.station-add { padding: 10px 13px; border-top: 2px dashed var(--line); }

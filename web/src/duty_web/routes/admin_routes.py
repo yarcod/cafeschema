@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import func
 
 from ..admin import ratelimit
 from ..admin.api_keys import revoke_api_key
@@ -14,7 +15,8 @@ from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
-from ..models import ROLE_ANSVARIG, ApiKey, Person, TeamRole
+from ..models import ROLE_ANSVARIG, ApiKey, Person, Slot, TeamRole, Venue
+from ..places import documents_for, rank_documents
 from ..session_scope import get_session as _session
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -135,3 +137,24 @@ def revoke_key(slug: str, key_id: int):
     if not ctx.is_club_admin or revoke_api_key(_session(), key_id) is None:
         abort(404)
     return redirect(url_for("admin.lag", slug=slug, klart="api_key.revoke"))
+
+
+@admin_bp.route("/<slug>/platser")
+@login_required
+def platser(slug: str):
+    ctx = _context(slug)
+    session = _session()
+    venues = session.query(Venue).order_by(Venue.name).all()
+    usage = dict(
+        session.query(Slot.station_id, func.count(Slot.id))
+        .filter(Slot.station_id.isnot(None))
+        .group_by(Slot.station_id)
+        .all()
+    )
+    documents = documents_for(ctx)
+    linked = {s.document for v in venues for s in v.stations if s.document}
+    return render_template(
+        "admin/platser.html", ctx=ctx, venues=venues, usage=usage, documents=documents,
+        unlinked=[d for d in documents if d.filename not in linked], rank=rank_documents,
+        done=request.args.get("klart"),
+    )

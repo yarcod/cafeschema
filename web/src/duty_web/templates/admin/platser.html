@@ -1,0 +1,63 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Platser{% endblock %}
+{% block content %}
+{% macro doc_options(docs, selected) %}
+  {% for doc in docs %}<option value="{{ doc.filename }}" {{ "selected" if doc.filename == selected }}>{{ doc.title }}{% if doc.team_slug %} ({{ doc.team_slug }}){% endif %}</option>{% endfor %}
+{% endmacro %}
+<div class="section-head"><h2>Platser</h2><span class="count">delas av hela klubben</span></div>
+{% if done %}<div class="notice">Klart. Ändringarna är genomförda.</div>{% endif %}
+{% for venue in venues %}
+<div class="venue">
+  <div class="venue-head">
+    <span class="v-name">{{ venue.name }}</span>
+    <span class="v-meta">{{ venue.stations|length }} {{ "station" if venue.stations|length == 1 else "stationer" }}</span>
+  </div>
+  {% for station in venue.stations %}
+  <div class="station">
+    <span class="s-name">{{ station.name }}</span>
+    <span class="s-use">{{ usage.get(station.id, 0) }} pass</span>
+    {% if station.document %}
+    <span class="s-doc ok">✓ {{ station.document }}</span>
+    {% else %}
+    <span class="s-doc missing">Ingen instruktion</span>
+    {% endif %}
+    <form class="inline-form s-link" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='station.link_document') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="station_id" value="{{ station.id }}">
+      <select name="document" class="admin-input" aria-label="Instruktion för {{ station.name }}">
+        <option value="">Ingen instruktion</option>
+        {{ doc_options(rank(venue.name, station.name, documents), station.document) }}
+      </select>
+      <button type="submit" class="btn btn-sm">Granska</button>
+    </form>
+  </div>
+  {% endfor %}
+  <form class="inline-form station-add" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='station.create') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="venue_id" value="{{ venue.id }}">
+    <input name="name" class="admin-input" placeholder="Ny station, t.ex. Kiosk entré" aria-label="Ny station på {{ venue.name }}" required>
+    <select name="document" class="admin-input" aria-label="Instruktion">
+      <option value="">Ingen instruktion än</option>
+      {{ doc_options(rank(venue.name, "", documents), None) }}
+    </select>
+    <button type="submit" class="btn btn-sm">+ Ny station</button>
+  </form>
+</div>
+{% else %}
+<p class="empty-state">Inga platser än. Lägg till den första nedan.</p>
+{% endfor %}
+<form class="card inline-form" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='venue.create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input name="name" class="admin-input" placeholder="Ny plats, t.ex. Hindås" aria-label="Ny plats" required>
+  <button type="submit" class="btn btn-sm">+ Ny plats</button>
+</form>
+{% if unlinked %}
+<div class="settings-card">
+  <span class="settings-label">Uppladdade men inte kopplade</span>
+  {% for doc in unlinked %}
+  <div class="doc-row"><span class="doc-text"><span class="doc-name">{{ doc.title }}</span><span class="doc-meta">{{ doc.filename }} · {{ doc.team_slug or "delad" }}</span></span></div>
+  {% endfor %}
+</div>
+{% endif %}
+<p class="agent-hint">agent → <b>GET /admin/api/venues</b> · <b>venue.create</b> · <b>station.create</b> · <b>station.link_document</b></p>
+{% endblock %}

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import func
 
 from ..admin import ratelimit
 from ..admin.actions import REGISTRY
@@ -20,7 +21,8 @@ from ..admin.executor import apply_plan, dry_run, scope_allows
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.redact import KEY_PATTERN
-from ..models import ApiKey, Player, TeamRole
+from ..models import ApiKey, Player, Slot, TeamRole, Venue
+from ..places import documents_for
 from ..roster import public_name
 from ..session_scope import get_session as _session
 
@@ -178,3 +180,36 @@ def roster():
             for player in players
         ],
     })
+
+
+@api_bp.route("/venues", methods=["GET"])
+def venues():
+    _context(_key(), None)
+    session = _session()
+    usage = dict(
+        session.query(Slot.station_id, func.count(Slot.id))
+        .filter(Slot.station_id.isnot(None))
+        .group_by(Slot.station_id)
+        .all()
+    )
+    return jsonify([
+        {
+            "id": venue.id,
+            "name": venue.name,
+            "stations": [
+                {"id": s.id, "name": s.name, "document": s.document, "slots": usage.get(s.id, 0)}
+                for s in venue.stations
+            ],
+        }
+        for venue in session.query(Venue).order_by(Venue.name)
+    ])
+
+
+@api_bp.route("/documents", methods=["GET"])
+def documents():
+    ctx = _context(_key(), request.args.get("team") or None)
+    return jsonify([
+        {"filename": d.filename, "team": d.team_slug, "title": d.title}
+        for d in documents_for(ctx)
+        if ctx.team is None or d.team_slug in (None, ctx.team.slug)
+    ])

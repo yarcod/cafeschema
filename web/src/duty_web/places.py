@@ -7,6 +7,10 @@ never become three stations with three different instruction links
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+
 from sqlalchemy.orm import Session
 
 from .models import Station, Venue
@@ -64,3 +68,44 @@ def document_for_slot(slot) -> str | None:
         return slot.station_row.document
     profile = profile_for(slot.duty_name)
     return profile.document if profile else None
+
+
+@dataclass(frozen=True)
+class DocumentFile:
+    filename: str
+    team_slug: str | None  # None: shared by the club
+    title: str
+
+
+def list_documents(root: Path, team_slugs: Iterable[str]) -> list[DocumentFile]:
+    """The uploaded instructions: shared ones first, then each team's own."""
+    found = []
+    for slug in [None, *sorted(team_slugs)]:
+        directory = root / slug if slug else root
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.iterdir()):
+            if path.is_file() and path.suffix.lower() in ALLOWED_SUFFIXES:
+                found.append(DocumentFile(path.name, slug, path.stem.replace("_", " ")))
+    return found
+
+
+def rank_documents(
+    venue_name: str, station_name: str, documents: list[DocumentFile]
+) -> list[DocumentFile]:
+    """Instructions whose names share words with the place, first."""
+    words = [w for w in normalize_key(f"{venue_name} {station_name}").split() if len(w) >= 3]
+
+    def score(doc: DocumentFile) -> int:
+        title = normalize_key(doc.title)
+        return sum(1 for word in words if word in title)
+
+    return sorted(documents, key=lambda d: (-score(d), d.title.casefold()))
+
+
+def documents_for(ctx) -> list[DocumentFile]:
+    """What this admin may link: shared files and her own teams' folders."""
+    from flask import current_app
+
+    root = Path(current_app.extensions["duty_web_app_config"].documents_dir)
+    return list_documents(root, [team.slug for team in ctx.teams])

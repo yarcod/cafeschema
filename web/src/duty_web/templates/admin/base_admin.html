@@ -40,7 +40,7 @@
   {% if ctx.team %}
   <nav class="admin-nav">
     <a class="{{ 'active' if request.endpoint == 'admin.lag' }}" href="{{ url_for('admin.lag', slug=ctx.team.slug) }}">Lag &amp; ansvariga</a>
-    {# anchor:nav #}
+    <a class="{{ 'active' if request.endpoint == 'admin.platser' }}" href="{{ url_for('admin.platser', slug=ctx.team.slug) }}">Platser</a>
   </nav>
   {% endif %}
   <main class="bench-main">
