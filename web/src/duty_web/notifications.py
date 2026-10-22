@@ -85,3 +85,15 @@ def send_swap_declined(
     if link:
         body += f"\n\nErt schema:\n{link}"
     _send_each(emails, "Ert bytesförslag avböjdes", body)
+
+
+def send_admin_granted(email: str, team_name: str, link: str) -> None:
+    _send(
+        email,
+        f"Du är ansvarig för {team_name} i Caféschema",
+        f"Du kan nu hantera {team_name} i Caféschema: uppdatera laglistan från "
+        "360Player, lägga till platser och göra fler till ansvariga.\n\n"
+        "Logga in som vanligt och tryck på ✎ uppe till höger, eller gå direkt hit:\n\n"
+        f"{link}\n\n"
+        "Var det fel? Säg till den som lade till dig, eller be en annan ansvarig ta bort dig.",
+    )

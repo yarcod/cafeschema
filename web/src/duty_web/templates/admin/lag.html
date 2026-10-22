@@ -9,7 +9,12 @@
   <span class="pn">{{ entry.person|public_name }}</span>
   <span class="actions">
     {% for role in entry.roles|sort %}<span class="role {{ role }}">{{ role_names[role] }}</span>{% endfor %}
-    {# anchor:entry-actions #}
+    {% set adding = "ansvarig" not in entry.roles %}
+    <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=slug, name='team_admins.add' if adding else 'team_admins.remove') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="person_id" value="{{ entry.person.id }}">
+      <button type="submit" class="btn btn-sm">{{ "Gör till ansvarig" if adding else "Ta bort som ansvarig" }}</button>
+    </form>
   </span>
   <span class="pr">Förälder till
     {% for child in entry.children %}{{ child.name }}{% if child.exempt %} <span class="exempt">(står inte på pass)</span>{% endif %}{{ ", " if not loop.last }}{% endfor %}
