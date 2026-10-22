@@ -15,16 +15,16 @@ from flask import Blueprint, current_app, jsonify, request
 from ..admin import ratelimit
 from ..admin.actions import REGISTRY
 from ..admin.actions.base import NearDuplicate, ValidationError, fields_schema
-from ..admin.api_keys import KEY_PREFIX, authenticate
+from ..admin.api_keys import authenticate
 from ..admin.executor import apply_plan, dry_run, scope_allows
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
+from ..admin.redact import KEY_PATTERN
 from ..models import ApiKey
 from ..session_scope import get_session as _session
 
 api_bp = Blueprint("admin_api", __name__, url_prefix="/admin/api")
 
-_KEY_PARAMS = ("api_key", "apikey", "key", "token", "access_token")
 _NOT_FOUND = {"error": "not_found"}
 
 
@@ -46,10 +46,16 @@ def _no_store(response):
     return response
 
 
+def _carries_a_key() -> bool:
+    values = [*request.args.values(), *request.cookies.values(), *request.form.values()]
+    body = request.get_json(silent=True) if request.is_json else None
+    if isinstance(body, dict):
+        values.extend(v for v in body.values() if isinstance(v, str))
+    return any(KEY_PATTERN.search(value) for value in values)
+
+
 def _key() -> ApiKey:
-    if any(name in request.args for name in _KEY_PARAMS) or any(
-        value.startswith(KEY_PREFIX) for value in request.cookies.values()
-    ):
+    if _carries_a_key():
         raise _Refused(400, {
             "error": "key_in_wrong_place",
             "message": "Skicka nyckeln i Authorization-headern, aldrig i adressen eller en cookie.",

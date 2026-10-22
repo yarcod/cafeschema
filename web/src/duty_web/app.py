@@ -83,6 +83,10 @@ def create_app(config: AppConfig) -> Flask:
     login_manager.init_app(app)
     csrf = CSRFProtect(app)
 
+    from .admin.redact import install as install_key_redaction
+
+    install_key_redaction()
+
     if config.public_hosts:
         @app.before_request
         def reject_unknown_host():

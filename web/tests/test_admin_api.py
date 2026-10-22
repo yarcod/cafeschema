@@ -127,3 +127,34 @@ def test_the_key_never_reaches_the_logs(app, client, echo, api_keys, caplog):
     assert crashed.status_code == 500
     assert key not in caplog.text
     assert key.split("_")[0] + "_" + key.split("_")[1] in caplog.text  # the prefix is logged
+
+
+def test_a_key_in_any_query_value_is_refused(client, api_keys):
+    assert client.get(f"/admin/api?x={api_keys['club']}").status_code == 400
+
+
+def test_a_key_in_a_form_field_is_refused_and_nothing_applied(client, echo, api_keys, session_factory):
+    key = api_keys["ansvarig"]
+    token = _echo(client, key, text="Hindås").get_json()["plan_token"]
+
+    response = client.post(
+        "/admin/api/tests.echo",
+        data={"team": "f14-bla", "dry_run": "false", "plan_token": token, "api_key": key},
+        headers=bearer(key),
+    )
+
+    assert response.status_code == 400
+    assert key not in response.get_data(as_text=True)
+    assert session_factory().query(Venue).count() == 0
+
+
+def test_a_key_in_a_json_value_is_refused(client, echo, api_keys):
+    key = api_keys["ansvarig"]
+
+    assert _echo(client, key, text="x", note=key).status_code == 400
+
+
+def test_a_foreign_cookie_starting_with_cs_does_not_block(client, api_keys):
+    client.set_cookie("annan", "cs_inte_en_nyckel")
+
+    assert client.get("/admin/api", headers=bearer(api_keys["club"])).status_code == 200
