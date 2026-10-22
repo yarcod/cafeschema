@@ -51,6 +51,83 @@ Filerna ligger på Fly-volymen under `/data/dokument`, så en ny fil behöver in
 driftsättning. Tillåtna filtyper: `pdf`, `png`, `jpg`, `txt`, `md`. Filnamnet blir
 rubriken i listan — `Kiosk_instruktioner.pdf` visas som "Kiosk instruktioner".
 
+## Admin
+
+Ansvariga i ett lag och klubbadmin ser en **✎** bredvid ⚙. Den leder till
+arbetsbänken på `/admin/<lag>/`:
+
+- **Lag & ansvariga**: laglistan från 360Player, ledarna och vilka som är
+  ansvariga. Varje ansvarig kan göra en annan förälder i laget till ansvarig.
+  Bara klubbadmin kan ta bort lagets sista ansvariga.
+- **Platser**: platser, stationer och vilken instruktion varje station
+  länkar. Delas av hela klubben. En station väljs alltid ur listan, så att
+  "cafe" och "Café" aldrig blir två ställen. Bara delade instruktioner, de som
+  ligger direkt i `DOCUMENTS_DIR`, kan kopplas till en station. En fil med
+  samma namn i lagets mapp går före den delade för just det laget.
+
+Allt som ändrar något visas först i **Granska** (+ nytt, ~ ändrat, − borttaget).
+Ingenting händer förrän du trycker **Genomför**.
+
+### Laglistan från 360Player
+
+1. Öppna laget i 360Player → **Truppen** → **Exportera** (en `…-members.csv`).
+2. ✎ → **Lag & ansvariga** → **Uppdatera från 360Player** → välj filen → Granska → Genomför.
+
+Spelare läses bara från spelarrader. Ledare känns igen automatiskt: i exporten
+står en ledare en gång till, utan barn och utan föräldrar, med samma e-post som
+när hen står som förälder. Ledarnas barn står inte på pass. Är någon felaktigt
+ledare rättas det i 360Player, inte här. Den som redan finns i ett annat lag
+kopplas till det här laget men byter aldrig namn. Ingen tas bort av en import:
+den som saknas i filen listas som en varning. Telefonnummer läses aldrig in.
+Filen läses i minnet och sparas inte; uppladdningar är begränsade till 2 MB per
+anrop och 1 MB per fil.
+
+### För agenter
+
+Varje knapp har en tvilling i API:t. Nycklar skapas bara i en inloggad
+webbläsare, under ⚙ → **Inställningar** → **API-nyckel för agent**. Den visas
+en gång, så spara den i 1Password. Nyckeln har samma behörighet som du och
+skickas bara som header. En nyckel i URL, formulär eller JSON avvisas med `400`
+och maskas i åtkomstloggen:
+
+```bash
+curl -H "Authorization: Bearer $NYCKEL" https://innebandy.edholm.cc/admin/api
+```
+
+`GET /admin/api` listar dina lag och alla åtgärder med fält. Varje åtgärd
+körs två gånger: först `"dry_run": true`, som ger exakt Granska-listan och en
+`plan_token`. Sedan `"dry_run": false` med samma `plan_token`, som genomför
+just det som granskades. Har något ändrats emellan blir svaret `409` och du
+granskar igen.
+
+```bash
+curl -X POST -H "Authorization: Bearer $NYCKEL" -F team=f15 -F file=@F15-members.csv \
+  https://innebandy.edholm.cc/admin/api/roster.import
+```
+
+Läsning: `GET /admin/api/roster?team=f15`, `GET /admin/api/venues`,
+`GET /admin/api/documents`.
+
+### Migrering
+
+`entrypoint.sh` kör `python -m duty_web.migrate` vid varje start, före appen.
+Den är idempotent:
+
+- Stationer och instruktionskopplingar läggs in från `duties.py` bara första
+  gången, när tabellen `stations` är tom. Senare körningar kopplar bara
+  passen som saknar station till redan befintliga stationer.
+- `CLUB_ADMINS` fungerar bara för adresser som redan finns bland personerna och
+  bara när ingen är klubbadmin. Hoppades en adress över: importera laglistan
+  och starta om.
+
+Repetera mot en kopia innan en driftsättning som ändrar den:
+
+```bash
+just db-pull /tmp/duty-copy.db
+cd web && uv run python -m duty_web.migrate /tmp/duty-copy.db
+cd web && uv run python ../scripts/verify_admin_migration.py /tmp/duty-copy.db
+```
+
 ### Vilken instruktion hör till vilket pass
 
 Både **Att göra på passet** och påminnelsemailet länkar till den enda instruktion
@@ -229,6 +306,7 @@ just web-ssh         # skal på maskinen
 | `SMTP_USER` / `SMTP_PASSWORD` | Fastmail-konto och app-lösenord |
 | `FROM_ADDRESS` | Avsändaradress, måste vara ett alias i Fastmail |
 | `PUBLIC_HOSTS` | Kommaseparerade domäner appen svarar på. Skyddar mot att en förfalskad `Host`-header styr var inloggningslänken pekar |
+| `CLUB_ADMINS` | Kommaseparerade e-postadresser som blir klubbadmin, **bara** så länge ingen är det och adressen redan finns bland personerna. Därefter avgör databasen. |
 
 > **OBS:** Byt aldrig `SECRET_KEY` i onödan — alla blir utloggade och måste begära
 > en ny inloggningslänk.
