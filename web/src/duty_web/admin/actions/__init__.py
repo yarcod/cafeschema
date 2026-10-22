@@ -5,3 +5,4 @@ here so both doors see the same registry.
 """
 
 from .base import REGISTRY, register  # noqa: F401
+from . import roster_import  # noqa: F401,E402

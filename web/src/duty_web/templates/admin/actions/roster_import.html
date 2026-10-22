@@ -1,0 +1,18 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Uppdatera från 360Player{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Uppdatera från 360Player</h2></div>
+<form class="card" method="post" enctype="multipart/form-data" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <ol class="hint" style="padding-left:18px;line-height:1.7">
+    <li>Öppna {{ ctx.team.name }} i 360Player och gå till <b>Truppen</b>.</li>
+    <li>Tryck <b>Exportera</b>. Du får en CSV-fil som slutar på <code>-members.csv</code>.</li>
+    <li>Välj filen här. Ingenting ändras förrän du har granskat.</li>
+  </ol>
+  <input type="file" name="file" accept=".csv,text/csv" class="admin-input" required>
+  {% if errors.get("file") %}<span class="field-error">{{ errors["file"] }}</span>{% endif %}
+  <button type="submit" class="btn btn-primary">Granska</button>
+  <p class="hint">Ledare känns igen automatiskt, och deras barn står inte på pass. Telefonnummer läses aldrig in.</p>
+  <p class="agent-hint">agent → <b>roster.import</b> med filen som <b>file</b> eller texten som <b>csv</b></p>
+</form>
+{% endblock %}

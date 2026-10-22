@@ -21,7 +21,13 @@
   <span class="count">{{ groups.ansvariga|length + groups.ledare|length + groups.foraldrar|length }} vårdnadshavare</span>
 </div>
 {% if done %}<div class="notice">Klart. Ändringarna är genomförda.</div>{% endif %}
-{# anchor:import #}
+<div class="card">
+  <div class="card-head">
+    <h3>Laglistan kommer från 360Player</h3>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='roster.import') }}">Uppdatera från 360Player</a>
+  </div>
+  <p class="hint">Spelare, föräldrar och ledare läses från 360Players export. Ändra dem där, inte här.</p>
+</div>
 <div class="card" style="gap:2px">
   <div class="roster-group" style="margin-top:0">Ansvariga</div>
   {% for entry in groups.ansvariga %}{{ entry_row(entry, ctx.team.slug) }}{% else %}<p class="hint">Ingen ansvarig i laget än.</p>{% endfor %}

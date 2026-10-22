@@ -20,7 +20,8 @@ from ..admin.executor import apply_plan, dry_run, scope_allows
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.redact import KEY_PATTERN
-from ..models import ApiKey
+from ..models import ApiKey, Player, TeamRole
+from ..roster import public_name
 from ..session_scope import get_session as _session
 
 api_bp = Blueprint("admin_api", __name__, url_prefix="/admin/api")
@@ -146,3 +147,34 @@ def run(name: str):
         }), 409
     except PlanTokenError as exc:
         return jsonify({"error": exc.code}), exc.status
+
+
+@api_bp.route("/roster", methods=["GET"])
+def roster():
+    """The team's players and parents, with addresses: for its admins only."""
+    key = _key()
+    slug = request.args.get("team") or None
+    if not slug:
+        raise _Refused(400, {"errors": {"team": "Ange lagets slug, t.ex. f15"}})
+    ctx = _context(key, slug)
+    session = _session()
+    roles: dict[int, list[str]] = {}
+    for role in session.query(TeamRole).filter_by(team_id=ctx.team.id):
+        roles.setdefault(role.person_id, []).append(role.role)
+    players = session.query(Player).filter_by(team_id=ctx.team.id).order_by(Player.name)
+    return jsonify({
+        "team": ctx.team.slug,
+        "players": [
+            {
+                "id": player.id,
+                "name": player.name,
+                "exempt": player.exempt,
+                "parents": [
+                    {"id": parent.id, "name": public_name(parent), "email": parent.email,
+                     "roles": sorted(roles.get(parent.id, []))}
+                    for parent in player.parents
+                ],
+            }
+            for player in players
+        ],
+    })
