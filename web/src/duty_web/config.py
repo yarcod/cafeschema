@@ -26,6 +26,9 @@ class AppConfig:
     # Documents live on the volume, not in the image, so adding one needs
     # no deploy.
     documents_dir: str = "/data/dokument"
+    # Who becomes club admin on a database that has none yet (spec,
+    # *Permissions*). Ignored once anyone is club admin.
+    club_admins: tuple[str, ...] = ()
 
 
 def _require(name: str) -> str:
@@ -46,6 +49,11 @@ def load_config() -> AppConfig:
         smtp_password=_require("SMTP_PASSWORD"),
         from_address=_require("FROM_ADDRESS"),
         documents_dir=os.environ.get("DOCUMENTS_DIR", "/data/dokument"),
+        club_admins=tuple(
+            email.strip().lower()
+            for email in os.environ.get("CLUB_ADMINS", "").split(",")
+            if email.strip()
+        ),
         public_hosts=tuple(
             host.strip().lower()
             for host in os.environ.get("PUBLIC_HOSTS", "").split(",")

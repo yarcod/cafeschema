@@ -7,7 +7,16 @@ from itsdangerous import URLSafeTimedSerializer
 from duty_web.app import create_app
 from duty_web.config import AppConfig
 from duty_web.db import init_db, make_engine, make_session_factory
-from duty_web.models import Person, Player, Slot, Team
+from duty_web.models import (
+    ROLE_ANSVARIG,
+    ROLE_LEADER,
+    ClubAdmin,
+    Person,
+    Player,
+    Slot,
+    Team,
+    TeamRole,
+)
 
 
 def make_family(session, team, player_name, parents):
@@ -196,3 +205,42 @@ def csrf_token(client, app):
             return serializer.dumps(sess["csrf_token"])
 
     return make_token
+
+
+def login(client, person):
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(person.id)
+        sess["_fresh"] = True
+
+
+@pytest.fixture
+def admins(session_factory, seeded, second_team):
+    """Who may administer what, on top of the seeded club.
+
+    'ansvarig' is the seeded first parent: ansvarig in the seeded team only,
+    though she also has a child on P13 (second_team). 'club' is a club admin
+    with no children at all. 'leader' is Maja Granne, a parent on the seeded
+    team and one of its leaders, which gives no admin rights. 'parent' is
+    the seeded second parent, with no role.
+    """
+    session = session_factory()
+    team = session.get(Team, seeded["team"].id)
+    ansvarig = session.get(Person, seeded["person"].id)
+    leader = session.query(Person).filter_by(email="maja@exempel.se").one()
+    club = Person(name="Klubb Admin", email="klubb@exempel.se")
+    session.add(club)
+    session.flush()
+    session.add_all([
+        ClubAdmin(person_id=club.id),
+        TeamRole(person_id=ansvarig.id, team_id=team.id, role=ROLE_ANSVARIG),
+        TeamRole(person_id=leader.id, team_id=team.id, role=ROLE_LEADER),
+    ])
+    session.commit()
+    return {
+        "ansvarig": ansvarig,
+        "club": club,
+        "leader": leader,
+        "parent": session.get(Person, seeded["other_parent"].id),
+        "team": team,
+        "other_team": session.get(Team, second_team["team"].id),
+    }

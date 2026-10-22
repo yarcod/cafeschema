@@ -52,6 +52,17 @@ def create_app(config: AppConfig) -> Flask:
     app.extensions["duty_web_session_factory"] = session_factory
     app.extensions["duty_web_app_config"] = config
 
+    from .admin.permissions import seed_club_admins
+
+    with session_factory() as session:
+        skipped = seed_club_admins(session, config.club_admins)
+    if skipped:
+        # A count, not the addresses: logs never carry email addresses.
+        app.logger.warning(
+            "CLUB_ADMINS: %d adress(er) matchar ingen person och hoppades över",
+            len(skipped),
+        )
+
     from .notifications import configure as configure_notifications
 
     configure_notifications(
