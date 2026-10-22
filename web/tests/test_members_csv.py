@@ -71,3 +71,14 @@ def test_leaders_are_parents_listed_again_without_children():
     assert roster.ignored_members == 1 and roster.guardians_without_email == 1
     assert roster.guardians["maja@exempel.se"].children == {"moa granne"}
     assert roster.players == {"moa granne": "Moa Granne"}
+
+
+def test_a_child_without_a_player_row_is_not_a_player_here():
+    roster = interpret(parse_members_csv(export(
+        "Moa,Granne,,,Maja Granne,",
+        "Maja,Granne,maja@exempel.se,,,Moa Granne;Syskon Granne",
+    )))
+
+    assert roster.players == {"moa granne": "Moa Granne"}
+    assert roster.guardians["maja@exempel.se"].children == {"moa granne"}
+    assert roster.children_without_row == 1

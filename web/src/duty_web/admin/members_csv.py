@@ -68,6 +68,7 @@ class Roster:
     leaders: set[str] = field(default_factory=set)               # emails
     guardians_without_email: int = 0
     ignored_members: int = 0
+    children_without_row: int = 0
 
 
 def interpret(rows: list[dict]) -> Roster:
@@ -75,16 +76,22 @@ def interpret(rows: list[dict]) -> Roster:
     for row in rows:
         if row["parents"]:
             roster.players.setdefault(normalize_name(row["name"]), row["name"])
+    missing: set[str] = set()
     for row in rows:
         if not row["children"]:
             continue
-        for child in row["children"]:
-            roster.players.setdefault(normalize_name(child), child)
+        # Players come only from player rows: a sibling on another team,
+        # named on a guardian's row, is not a player here.
+        known = {normalize_name(c) for c in row["children"]} & set(roster.players)
+        missing |= {normalize_name(c) for c in row["children"]} - set(roster.players)
         if not row["email"]:
             roster.guardians_without_email += 1
             continue
+        if not known:
+            continue
         guardian = roster.guardians.setdefault(row["email"], Guardian(row["name"]))
-        guardian.children.update(normalize_name(child) for child in row["children"])
+        guardian.children.update(known)
+    roster.children_without_row = len(missing)
     for row in rows:
         if row["parents"] or row["children"]:
             continue

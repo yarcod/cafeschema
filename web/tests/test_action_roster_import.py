@@ -177,3 +177,96 @@ def test_the_roster_read_shows_addresses_to_the_teams_admins_only(client, admins
     assert moa["parents"] == [{"id": admins["leader"].id, "name": "Maja Granne",
                                "email": "maja@exempel.se", "roles": ["leader"]}]
     assert other.status_code == 404
+
+
+def test_a_sibling_on_another_team_is_not_made_a_player_here(session_factory, admins):
+    _, _, plan, _ = _plan(
+        session_factory, admins, *TEAM[:3], "Alva,Exempel,tova@exempel.se,,,Tova Exempel;Elsa Syskon"
+    )
+
+    assert not any("Syskon" in c.summary or "Syskon" in (c.detail or "") for c in plan.changes)
+    assert any("1 barn i föräldrarnas rader finns inte som spelare i listan och hoppades över." in w
+               for w in plan.warnings)
+
+
+def test_a_person_from_another_team_is_neither_renamed_nor_named(session_factory, admins):
+    _, _, plan, _ = _plan(session_factory, admins, *TEAM, "Anna,Annan,nora@exempel.se,,,Tova Exempel")
+
+    text = json.dumps(plan.public(), ensure_ascii=False)
+    assert "Nora" not in text and "@" not in text
+    assert not any(c.summary == "Namn ändrat" for c in plan.changes)
+
+    _apply(session_factory, admins, *TEAM, "Anna,Annan,nora@exempel.se,,,Tova Exempel")
+    nora = session_factory().query(Person).filter_by(email="nora@exempel.se").one()
+    assert nora.name == "Nora Främling"
+    assert "Tova Exempel" in [p.name for p in nora.players]
+
+
+def test_a_person_already_on_this_team_is_still_renamed(session_factory, admins):
+    _, _, plan, _ = _plan(session_factory, admins, *TEAM[:3], "Alva,Exempel,tova@exempel.se,,,Tova Exempel")
+
+    assert not any(c.summary == "Namn ändrat" for c in plan.changes)  # same name: nothing
+    rows = [r.replace("Björn,Exempel", "Bjorn,Exempel") for r in TEAM]
+    _, _, plan, _ = _plan(session_factory, admins, *rows)
+    assert any(c.summary == "Namn ändrat" for c in plan.changes)
+
+
+def test_importing_into_one_team_leaves_the_other_alone(session_factory, admins):
+    def snapshot():
+        s = session_factory()
+        return sorted(
+            (p.name, p.exempt, sorted(x.email for x in p.parents))
+            for p in s.query(Player).filter_by(team_id=admins["other_team"].id)
+        )
+
+    before = snapshot()
+    _apply(session_factory, admins, *TEAM)
+
+    assert snapshot() == before
+
+
+def test_a_600kb_upload_stays_in_memory(client, admins, csrf_token, monkeypatch):
+    import tempfile
+
+    def boom(*a, **k):
+        raise AssertionError("an upload touched the disk")
+
+    monkeypatch.setattr(tempfile, "SpooledTemporaryFile", boom)
+    monkeypatch.setattr(tempfile, "TemporaryFile", boom)
+    pad = "\n".join(f"Fyll{i},Fyllnad,,,Fy Fyllnad{i}," for i in range(20000))
+    data = export(*TEAM, pad)
+    assert 500_000 < len(data) < 1_000_000
+    login(client, admins["ansvarig"])
+
+    response = client.post(
+        "/admin/f14-bla/do/roster.import",
+        data={"csrf_token": csrf_token(), "file": (io.BytesIO(data), "F14-members.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+
+
+def test_a_file_over_1mb_is_refused_by_the_rule(client, admins, csrf_token):
+    login(client, admins["ansvarig"])
+    data = b"x" * 1_200_000
+
+    response = client.post(
+        "/admin/f14-bla/do/roster.import",
+        data={"csrf_token": csrf_token(), "file": (io.BytesIO(data), "stor.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400 and "för stor" in response.get_data(as_text=True)
+
+
+def test_a_body_over_2mb_gets_413(client, admins, csrf_token):
+    login(client, admins["ansvarig"])
+
+    response = client.post(
+        "/admin/f14-bla/do/roster.import",
+        data={"csrf_token": csrf_token(), "file": (io.BytesIO(b"x" * 2_200_000), "enorm.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 413

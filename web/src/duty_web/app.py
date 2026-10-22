@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import calendar
+import io
 import zlib
 from datetime import timedelta
 
-from flask import Flask, request
+from flask import Flask, Request, request
 from flask_login import LoginManager, UserMixin, current_user
 from flask_wtf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -29,8 +30,18 @@ class LoginUser(UserMixin):
         self.id = str(person.id)
 
 
+class _InMemoryUploads(Request):
+    """Uploaded files stay in memory: Werkzeug would spool >500 KB to disk."""
+
+    def _get_file_stream(self, total_content_length, content_type, filename=None, content_length=None):
+        return io.BytesIO()
+
+
 def create_app(config: AppConfig) -> Flask:
     app = Flask(__name__)
+    app.request_class = _InMemoryUploads
+    # Refused with 413 before anything is parsed.
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
     # Fly's proxy terminates TLS and forwards plain HTTP, so without this
     # url_for(_external=True) builds http:// links — and the magic-link

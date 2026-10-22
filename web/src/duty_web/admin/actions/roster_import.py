@@ -49,6 +49,13 @@ def _reconcile(session: Session, team: Team, roster: Roster) -> tuple[Plan, _Del
     plan, delta = Plan(), _Delta()
     players = {normalize_name(p.name): p for p in session.query(Player).filter_by(team_id=team.id).order_by(Player.id)}
     people = {p.email: p for p in session.query(Person).order_by(Person.id)}
+    # Only people already tied to THIS team may be renamed or have their stored
+    # name shown; anyone else matched by email is linked, never touched.
+    team_people = {
+        pid for (pid,) in session.query(parent_players.c.person_id)
+        .join(Player, Player.id == parent_players.c.player_id)
+        .filter(Player.team_id == team.id)
+    } | {pid for (pid,) in session.query(TeamRole.person_id).filter_by(team_id=team.id)}
     links = {
         (person_id, player_id)
         for person_id, player_id in session.query(
@@ -70,7 +77,7 @@ def _reconcile(session: Session, team: Team, roster: Roster) -> tuple[Plan, _Del
             delta.new_people.append((email, guardian.name))
             plan.add("add", "parent", f"Ny vårdnadshavare: {guardian.name}",
                      "till " + ", ".join(sorted(player_name(k) for k in guardian.children)))
-        elif guardian.name and person.name != guardian.name:
+        elif person.id in team_people and guardian.name and person.name != guardian.name:
             delta.renames.append((person.id, guardian.name))
             plan.add("update", "parent", "Namn ändrat", f"{public_name(person)} → {guardian.name}")
         for key in sorted(guardian.children):
@@ -118,6 +125,11 @@ def _reconcile(session: Session, team: Team, roster: Roster) -> tuple[Plan, _Del
         plan.warnings.append(
             f"{roster.guardians_without_email} vårdnadshavare saknar e-post i 360Player "
             "och kan inte logga in."
+        )
+    if roster.children_without_row:
+        plan.warnings.append(
+            f"{roster.children_without_row} barn i föräldrarnas rader finns inte som spelare "
+            "i listan och hoppades över."
         )
     if roster.ignored_members:
         plan.warnings.append(
