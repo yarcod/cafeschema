@@ -83,6 +83,8 @@ class RemoveTeamAdmin(Action):
             raise ValidationError({"person_id": "Det måste finnas minst en ansvarig kvar i laget. Be klubbadmin om hjälp."})
         plan = Plan()
         plan.add("delete", "ansvarig", f"Inte längre ansvarig: {public_name(role.person)}")
+        if inp.person_id == ctx.person.id:
+            plan.warnings.append("Du förlorar åtkomst till laget.")
         person_id, team_id = inp.person_id, ctx.team.id
         plan.writes.append(lambda s: s.query(TeamRole).filter_by(
             person_id=person_id, team_id=team_id, role=ROLE_ANSVARIG

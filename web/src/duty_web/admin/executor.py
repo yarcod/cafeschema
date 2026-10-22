@@ -87,8 +87,9 @@ def apply_plan(
     for callback in plan.after_commit:
         try:
             callback()
-        except Exception:
-            logger.exception("Steg efter genomförande misslyckades: %s", action.name)
+        except Exception as exc:
+            # No exc_info and no message: an SMTP error can carry the recipient's address.
+            logger.error("Steg efter genomförande misslyckades: %s (%s)", action.name, type(exc).__name__)
 
     logger.info(
         "admin %s lag=%s ändringar=%d via=%s",

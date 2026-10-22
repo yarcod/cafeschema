@@ -126,6 +126,9 @@ def genomfor(slug: str):
         if exc.status == 404:
             abort(404)
         return render_template("admin/stale.html", ctx=ctx, code=exc.code), exc.status
+    if admin_context(_session(), _session().get(Person, int(current_user.id)), slug) is None:
+        # The action took this person's own access to the team away.
+        return redirect(url_for("admin.home"))
     return redirect(url_for(action.done_endpoint, slug=slug, klart=action.name))
 
 
