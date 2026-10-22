@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from ...models import Station, Venue
 from ...names import normalize_key
-from ...places import documents_for, find_station, find_venue
+from ...places import find_station, find_venue, linkable_documents, title_for
 from .base import Action, NearDuplicate, Plan, ValidationError, register
 
 MAX_NAME = 80
@@ -27,20 +27,20 @@ def _name(raw: str, field_name: str) -> str:
     return name
 
 
-def _document(ctx, filename: str | None) -> tuple[str | None, str]:
+def _document(filename: str | None) -> tuple[str | None, str]:
     """(filename or None, title for Granska). Only uploaded files are allowed."""
     if not filename:
         return None, "ingen"
-    for doc in documents_for(ctx):
+    for doc in linkable_documents():
         if doc.filename == filename:
             return doc.filename, doc.title
-    raise ValidationError({"document": "Ingen uppladdad instruktion heter så"})
+    raise ValidationError({"document": "Okänd instruktion"})
 
 
-def _document_choices(ctx) -> list[tuple[str, str]]:
+def _document_choices() -> list[tuple[str, str]]:
     return [
-        (d.filename, d.title + (f" ({d.team_slug})" if d.team_slug else ""))
-        for d in documents_for(ctx)
+        (d.filename, d.title)
+        for d in linkable_documents()
     ]
 
 
@@ -94,7 +94,7 @@ class CreateStation(Action):
             "labels": {"venue_id": "Plats", "name": "Stationens namn", "document": "Instruktion"},
             "choices": {
                 "venue_id": [(v.id, v.name) for v in venues],
-                "document": _document_choices(ctx),
+                "document": _document_choices(),
             },
         }
 
@@ -106,7 +106,7 @@ class CreateStation(Action):
         existing = find_station(session, venue, name)
         if existing is not None:
             raise NearDuplicate("name", existing.name, existing.id)
-        document, title = _document(ctx, inp.document)
+        document, title = _document(inp.document)
         plan = Plan()
         plan.add("add", "station", f"Ny station: {name}", f"på {venue.name} · instruktion: {title}")
         venue_id = venue.id
@@ -137,7 +137,7 @@ class LinkDocument(Action):
             "labels": {"station_id": "Station", "document": "Instruktion"},
             "choices": {
                 "station_id": [(s.id, f"{s.name} ({s.venue.name})") for s in stations],
-                "document": _document_choices(ctx),
+                "document": _document_choices(),
             },
         }
 
@@ -145,11 +145,11 @@ class LinkDocument(Action):
         station = session.get(Station, inp.station_id)
         if station is None:
             raise ValidationError({"station_id": "Okänd station"})
-        document, title = _document(ctx, inp.document)
+        document, title = _document(inp.document)
         plan = Plan()
         if document == station.document:
             return plan
-        before = station.document.rsplit(".", 1)[0].replace("_", " ") if station.document else "ingen"
+        before = title_for(station.document) if station.document else "ingen"
         plan.add("update", "station", f"Instruktion för {station.name} ({station.venue.name})",
                  f"{before} → {title}")
         station_id = station.id

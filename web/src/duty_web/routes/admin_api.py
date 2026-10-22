@@ -22,7 +22,7 @@ from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.redact import KEY_PATTERN
 from ..models import ApiKey, Player, Slot, TeamRole, Venue
-from ..places import documents_for
+from ..places import linkable_documents
 from ..roster import public_name
 from ..session_scope import get_session as _session
 
@@ -207,9 +207,8 @@ def venues():
 
 @api_bp.route("/documents", methods=["GET"])
 def documents():
-    ctx = _context(_key(), request.args.get("team") or None)
+    _context(_key(), request.args.get("team") or None)
     return jsonify([
-        {"filename": d.filename, "team": d.team_slug, "title": d.title}
-        for d in documents_for(ctx)
-        if ctx.team is None or d.team_slug in (None, ctx.team.slug)
+        {"filename": d.filename, "team": None, "title": d.title}
+        for d in linkable_documents()
     ])

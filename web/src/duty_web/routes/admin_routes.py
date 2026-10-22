@@ -16,7 +16,7 @@ from ..admin.plan_tokens import PlanTokenError
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
 from ..models import ROLE_ANSVARIG, ApiKey, Person, Slot, TeamRole, Venue
-from ..places import documents_for, rank_documents
+from ..places import linkable_documents, rank_documents
 from ..session_scope import get_session as _session
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -151,7 +151,7 @@ def platser(slug: str):
         .group_by(Slot.station_id)
         .all()
     )
-    documents = documents_for(ctx)
+    documents = linkable_documents()
     linked = {s.document for v in venues for s in v.stations if s.document}
     return render_template(
         "admin/platser.html", ctx=ctx, venues=venues, usage=usage, documents=documents,

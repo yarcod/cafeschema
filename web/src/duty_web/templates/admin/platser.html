@@ -2,7 +2,8 @@
 {% block title %}Platser{% endblock %}
 {% block content %}
 {% macro doc_options(docs, selected) %}
-  {% for doc in docs %}<option value="{{ doc.filename }}" {{ "selected" if doc.filename == selected }}>{{ doc.title }}{% if doc.team_slug %} ({{ doc.team_slug }}){% endif %}</option>{% endfor %}
+  {% if selected and selected not in docs|map(attribute="filename") %}<option value="{{ selected }}" selected>{{ selected }} (saknas bland uppladdade)</option>{% endif %}
+  {% for doc in docs %}<option value="{{ doc.filename }}" {{ "selected" if doc.filename == selected }}>{{ doc.title }}</option>{% endfor %}
 {% endmacro %}
 <div class="section-head"><h2>Platser</h2><span class="count">delas av hela klubben</span></div>
 {% if done %}<div class="notice">Klart. Ändringarna är genomförda.</div>{% endif %}
@@ -55,7 +56,7 @@
 <div class="settings-card">
   <span class="settings-label">Uppladdade men inte kopplade</span>
   {% for doc in unlinked %}
-  <div class="doc-row"><span class="doc-text"><span class="doc-name">{{ doc.title }}</span><span class="doc-meta">{{ doc.filename }} · {{ doc.team_slug or "delad" }}</span></span></div>
+  <div class="doc-row"><span class="doc-text"><span class="doc-name">{{ doc.title }}</span><span class="doc-meta">{{ doc.filename }} · delad</span></span></div>
   {% endfor %}
 </div>
 {% endif %}

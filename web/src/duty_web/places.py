@@ -77,6 +77,11 @@ class DocumentFile:
     title: str
 
 
+def title_for(filename: str) -> str:
+    """'Cafeteria_Instruktion_MIH.pdf' → 'Cafeteria Instruktion MIH'."""
+    return Path(filename).stem.replace("_", " ")
+
+
 def list_documents(root: Path, team_slugs: Iterable[str]) -> list[DocumentFile]:
     """The uploaded instructions: shared ones first, then each team's own."""
     found = []
@@ -86,7 +91,7 @@ def list_documents(root: Path, team_slugs: Iterable[str]) -> list[DocumentFile]:
             continue
         for path in sorted(directory.iterdir()):
             if path.is_file() and path.suffix.lower() in ALLOWED_SUFFIXES:
-                found.append(DocumentFile(path.name, slug, path.stem.replace("_", " ")))
+                found.append(DocumentFile(path.name, slug, title_for(path.name)))
     return found
 
 
@@ -103,9 +108,15 @@ def rank_documents(
     return sorted(documents, key=lambda d: (-score(d), d.title.casefold()))
 
 
-def documents_for(ctx) -> list[DocumentFile]:
-    """What this admin may link: shared files and her own teams' folders."""
+def linkable_documents() -> list[DocumentFile]:
+    """What a station may link: the club's shared files only.
+
+    Stations are club-wide, so a link to one team's private folder would be
+    broken for every other team and expose its filename. A team's folder
+    keeps its role as a same-name override when the file is served.
+    Needs an app context.
+    """
     from flask import current_app
 
     root = Path(current_app.extensions["duty_web_app_config"].documents_dir)
-    return list_documents(root, [team.slug for team in ctx.teams])
+    return list_documents(root, [])

@@ -221,3 +221,59 @@ def test_an_empty_document_unlinks(app, session_factory, admins):
 
     assert plan.changes[0].detail == "Cafeteria Instruktion MIH → ingen"
     assert session_factory().get(Station, station.id).document is None
+
+
+def test_a_team_folder_only_file_cannot_be_linked(app, session_factory, admins, documents_dir):
+    (documents_dir / "p13").mkdir()
+    (documents_dir / "p13" / "Bara_P13.pdf").write_bytes(b"%PDF")
+    session = session_factory()
+    station = find_or_create_station(session, "Mölnlycke idrottshall", "Café")
+    session.commit()
+
+    with pytest.raises(ValidationError) as caught:
+        _run(app, session_factory, admins["club"], "station.create",
+             venue_id=str(station.venue_id), name="Kiosk", document="Bara_P13.pdf")
+    assert "document" in caught.value.errors
+    with pytest.raises(ValidationError) as caught:
+        _run(app, session_factory, admins["club"], "station.link_document",
+             station_id=str(station.id), document="Bara_P13.pdf")
+    assert "document" in caught.value.errors
+
+
+def test_a_shared_file_with_a_team_copy_can_be_linked(app, session_factory, admins, documents_dir):
+    (documents_dir / "p13").mkdir()
+    (documents_dir / "p13" / "Cafeteria_Instruktion_MIH.pdf").write_bytes(b"%PDF")
+    session = session_factory()
+    station = find_or_create_station(session, "Mölnlycke idrottshall", "Café")
+    session.commit()
+
+    plan = _run(app, session_factory, admins["club"], "station.link_document",
+                station_id=str(station.id), document="Cafeteria_Instruktion_MIH.pdf")
+
+    assert len(plan.changes) == 1
+
+
+def test_team_files_are_not_shown_on_platser_or_in_the_api(
+        client, admins, api_keys, session_factory, documents_dir):
+    (documents_dir / "p13").mkdir()
+    (documents_dir / "p13" / "Bara_P13.pdf").write_bytes(b"%PDF")
+    login(client, admins["club"])
+
+    page = client.get("/admin/f14-bla/platser").get_data(as_text=True)
+    docs = client.get("/admin/api/documents", headers=bearer(api_keys["club"])).get_json()
+
+    assert "Bara_P13" not in page
+    assert [d["filename"] for d in docs] == [
+        "Cafeteria_Instruktion_MIH.pdf", "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"]
+
+
+def test_a_current_document_outside_the_list_stays_selected(client, admins, session_factory):
+    session = session_factory()
+    station = find_or_create_station(session, "Mölnlycke idrottshall", "Café")
+    station.document = "Gammal.pdf"
+    session.commit()
+    login(client, admins["club"])
+
+    page = client.get("/admin/f14-bla/platser").get_data(as_text=True)
+
+    assert '<option value="Gammal.pdf" selected>' in page
