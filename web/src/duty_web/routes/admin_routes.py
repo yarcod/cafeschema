@@ -11,7 +11,7 @@ from ..admin.api_keys import revoke_api_key
 from ..admin.actions import REGISTRY
 from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_schema
 from ..admin.executor import apply_plan, dry_run, scope_allows
-from ..admin.permissions import AdminContext, admin_context
+from ..admin.permissions import AdminContext, admin_context, admin_teams
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
@@ -126,9 +126,13 @@ def genomfor(slug: str):
         if exc.status == 404:
             abort(404)
         return render_template("admin/stale.html", ctx=ctx, code=exc.code), exc.status
-    if admin_context(_session(), _session().get(Person, int(current_user.id)), slug) is None:
+    session = _session()
+    person = session.get(Person, int(current_user.id))
+    if admin_context(session, person, slug) is None:
         # The action took this person's own access to the team away.
-        return redirect(url_for("admin.home"))
+        if admin_teams(session, person.id):
+            return redirect(url_for("admin.home"))
+        return redirect(url_for("schedule.mine"))
     return redirect(url_for(action.done_endpoint, slug=slug, klart=action.name))
 
 

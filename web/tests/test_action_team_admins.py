@@ -152,7 +152,7 @@ def test_removing_someone_who_is_not_ansvarig(app, session_factory, admins):
     assert caught.value.errors == {"person_id": "Personen är inte ansvarig i laget"}
 
 
-def test_removing_yourself_warns_and_sends_you_home(app, client, session_factory, admins, sent, csrf_token):
+def _self_removal(app, client, session_factory, admins, csrf_token):
     _run(app, session_factory, admins["ansvarig"], "team_admins.add", admins["parent"].id)
     session = session_factory()
     ctx = admin_context(session, session.get(Person, admins["parent"].id), "f14-bla")
@@ -161,13 +161,29 @@ def test_removing_yourself_warns_and_sends_you_home(app, client, session_factory
         plan, token = dry_run(session, ctx, action, action.parse({"person_id": str(admins["parent"].id)}, {}),
                               secret_key=app.config["SECRET_KEY"])
     assert "Du förlorar åtkomst till laget." in plan.warnings
-
     login(client, admins["parent"])
-    response = client.post("/admin/f14-bla/genomfor", data={"csrf_token": csrf_token(), "plan_token": token})
+    return client.post("/admin/f14-bla/genomfor", data={"csrf_token": csrf_token(), "plan_token": token})
+
+
+def test_removing_your_only_admin_team_sends_you_to_the_start_page(app, client, session_factory, admins, sent, csrf_token):
+    response = _self_removal(app, client, session_factory, admins, csrf_token)
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/")
+    assert response.headers["Location"] == "/"
     assert not is_ansvarig(session_factory(), admins["parent"].id, admins["team"].id)
+
+
+def test_removing_yourself_while_administering_another_team_lands_in_admin(app, client, session_factory, admins, sent, csrf_token):
+    from duty_web.models import ROLE_ANSVARIG, TeamRole
+
+    session = session_factory()
+    session.add(TeamRole(person_id=admins["parent"].id, team_id=admins["other_team"].id, role=ROLE_ANSVARIG))
+    session.commit()
+
+    response = _self_removal(app, client, session_factory, admins, csrf_token)
+
+    assert response.headers["Location"].endswith("/admin/")
+    assert client.get("/admin/", follow_redirects=True).status_code == 200
 
 
 def test_removing_another_does_not_warn(app, session_factory, admins, sent):
