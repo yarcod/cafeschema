@@ -21,6 +21,7 @@ def test_an_ansvarig_administers_her_team_only(session_factory, admins):
     # She has a child on P13, but that makes her a parent there, not an admin.
     assert admin_context(session, person, "p13") is None
     assert is_ansvarig(session, person.id, admins["team"].id)
+    assert not is_ansvarig(session, person.id, admins["other_team"].id)
 
 
 def test_a_club_admin_administers_every_team(session_factory, admins):
@@ -67,6 +68,26 @@ def test_club_admins_are_read_from_the_environment(monkeypatch):
         "SECRET_KEY": "s", "SCHEDULE_API_KEY": "k", "SMTP_HOST": "h", "SMTP_USER": "u",
         "SMTP_PASSWORD": "p", "FROM_ADDRESS": "f@exempel.se",
         "CLUB_ADMINS": " Dan@Exempel.se ,, bo@exempel.se",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    assert load_config().club_admins == ("dan@exempel.se", "bo@exempel.se")
+
+
+def test_a_repeated_address_seeds_one_club_admin(session_factory, seeded):
+    session = session_factory()
+
+    skipped = seed_club_admins(session, ["tova@exempel.se", "tova@exempel.se"])
+
+    assert skipped == []
+    assert session.query(ClubAdmin).count() == 1
+
+
+def test_repeated_or_case_variant_addresses_collapse_in_the_config(monkeypatch):
+    for name, value in {
+        "SECRET_KEY": "s", "SCHEDULE_API_KEY": "k", "SMTP_HOST": "h", "SMTP_USER": "u",
+        "SMTP_PASSWORD": "p", "FROM_ADDRESS": "f@exempel.se",
+        "CLUB_ADMINS": "Dan@exempel.se,bo@exempel.se,dan@exempel.se,bo@exempel.se",
     }.items():
         monkeypatch.setenv(name, value)
 

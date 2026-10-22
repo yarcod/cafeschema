@@ -50,9 +50,11 @@ def load_config() -> AppConfig:
         from_address=_require("FROM_ADDRESS"),
         documents_dir=os.environ.get("DOCUMENTS_DIR", "/data/dokument"),
         club_admins=tuple(
-            email.strip().lower()
-            for email in os.environ.get("CLUB_ADMINS", "").split(",")
-            if email.strip()
+            dict.fromkeys(
+                email.strip().lower()
+                for email in os.environ.get("CLUB_ADMINS", "").split(",")
+                if email.strip()
+            )
         ),
         public_hosts=tuple(
             host.strip().lower()

@@ -99,11 +99,13 @@ def seed_club_admins(session: Session, emails: Iterable[str]) -> list[str]:
     if session.query(ClubAdmin).count():
         return []
     skipped = []
+    seeded: set[int] = set()
     for email in emails:
         person = session.query(Person).filter_by(email=email).one_or_none()
         if person is None:
             skipped.append(email)
-        else:
+        elif person.id not in seeded:
+            seeded.add(person.id)
             session.add(ClubAdmin(person_id=person.id))
     session.commit()
     return skipped
