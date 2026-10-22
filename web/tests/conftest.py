@@ -244,3 +244,23 @@ def admins(session_factory, seeded, second_team):
         "team": team,
         "other_team": session.get(Team, second_team["team"].id),
     }
+
+
+@pytest.fixture
+def echo(app):
+    """Registers the test-only tests.echo action and its form template."""
+    from jinja2 import ChoiceLoader, DictLoader
+
+    from duty_web.admin.actions import REGISTRY
+
+    from .admin_echo import ECHO_TEMPLATE, EchoAction
+
+    action = EchoAction()
+    REGISTRY[action.name] = action
+    original = app.jinja_env.loader
+    app.jinja_env.loader = ChoiceLoader(
+        [DictLoader({action.template: ECHO_TEMPLATE}), original]
+    )
+    yield action
+    REGISTRY.pop(action.name, None)
+    app.jinja_env.loader = original
