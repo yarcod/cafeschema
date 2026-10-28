@@ -1,0 +1,66 @@
+{% extends "admin/base_admin.html" %}
+{% from "_names.html" import slot_person %}
+{% block title %}Pass{% endblock %}
+{% block content %}
+{% macro shift_card(shift, slug, swapping) %}
+<div class="pass-shift">
+  <div class="pass-top">
+    <span class="shift-time">{{ shift.start_time.strftime("%H:%M") }}–{{ shift.end_time.strftime("%H:%M") }}</span>
+    <span class="{{ shift.duty_name|chip_class }}">{{ shift.duty_name }}</span>
+    <span class="pass-place">{{ shift.station }}{% if shift.venue %} · {{ shift.venue }}{% endif %}</span>
+  </div>
+  {% for slot in shift.slots %}
+  <div class="pass-seat">
+    {% if slot.player_id is none %}
+    <label><input type="checkbox" name="slot_ids" value="{{ slot.id }}"> <span class="seat-open">Ledigt</span>{% if slot.child_name %} <span class="hint">({{ slot.child_name }} i schemat)</span>{% endif %}</label>
+    {% else %}
+    <span>{{ slot_person(slot) }}</span>
+    {% endif %}
+    {% if slot.id in swapping %}<span class="role leader">Byte väntar</span>{% endif %}
+    <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name='slot.update', slot_ids=[slot.id]) }}">Ändra spelare</a>
+  </div>
+  {% endfor %}
+  {% set ids = shift.slots | map(attribute="id") | list %}
+  <div class="inline-form">
+    <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name='slot.update', slot_ids=ids) }}">{{ "Sätt datum" if shift.date is none else "Ändra" }}</a>
+    <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name='slot.delete', slot_ids=ids) }}">Ta bort</a>
+  </div>
+</div>
+{% endmacro %}
+
+{% if done %}<div class="notice">Klart. Ändringen är genomförd.</div>{% endif %}
+<div class="section-head">
+  <h2>Pass</h2>
+  <span class="count">{{ open_seats }} {{ "ledig plats" if open_seats == 1 else "lediga platser" }}</span>
+</div>
+<div class="inline-form">
+  <a class="btn btn-primary" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='slots.create') }}">+ Lägg till pass</a>
+  <a class="btn" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='schedule.import') }}">Importera Excel</a>
+  {% if include_past %}
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug) }}">Dölj tidigare</a>
+  {% else %}
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug, tidigare=1) }}">Visa tidigare</a>
+  {% endif %}
+</div>
+<form method="get" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='slots.assign') }}">
+  {% for day in days %}
+  <div class="day-group">
+    <div class="day-head">
+      <span class="day-title">{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}</span>
+      <span class="day-count">{{ day.shifts|length }} pass</span>
+    </div>
+    {% for shift in day.shifts %}{{ shift_card(shift, ctx.team.slug, swapping) }}{% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-state">Inga kommande pass. Lägg till pass eller importera coachens Excel.</p>
+  {% endfor %}
+  {% if undated_shifts %}
+  <div class="section-head"><h2>Datum ej satt</h2><span class="count">{{ undated_shifts|length }} pass</span></div>
+  {% for shift in undated_shifts %}{{ shift_card(shift, ctx.team.slug, swapping) }}{% endfor %}
+  {% endif %}
+  {% if open_seats %}
+  <button type="submit" class="btn btn-primary">Bemanna valda platser</button>
+  {% endif %}
+</form>
+<p class="agent-hint">agent → <b>GET /admin/api/slots?team={{ ctx.team.slug }}</b></p>
+{% endblock %}

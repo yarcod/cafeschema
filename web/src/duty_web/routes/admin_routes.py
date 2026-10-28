@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from markupsafe import Markup
@@ -15,6 +17,7 @@ from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_
 from ..admin.executor import apply_plan, dry_run, preview, scope_allows
 from ..admin.permissions import AdminContext, admin_context, admin_teams
 from ..admin.plan_tokens import PlanTokenError, read_plan_token
+from ..admin.slot_ops import pending_slot_ids
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
 from ..models import ApiKey, Person, Slot, Venue
@@ -89,7 +92,33 @@ def _no_store(response):
 @login_required
 def home():
     ctx = _context(None)
-    return redirect(url_for("admin.lag", slug=ctx.teams[0].slug))
+    return redirect(url_for("admin.pass_tab", slug=ctx.teams[0].slug))
+
+
+@admin_bp.route("/<slug>/pass")
+@login_required
+def pass_tab(slug: str):
+    ctx = _context(slug)
+    session = _session()
+    include_past = request.args.get("tidigare") == "1"
+    query = session.query(Slot).filter(Slot.team_id == ctx.team.id, Slot.date.isnot(None))
+    if not include_past:
+        query = query.filter(Slot.date >= date.today())
+    dated = query.order_by(Slot.date, Slot.id).all()
+    undated = (
+        session.query(Slot)
+        .filter(Slot.team_id == ctx.team.id, Slot.date.is_(None))
+        .order_by(Slot.duty_name, Slot.id)
+        .all()
+    )
+    everything = dated + undated
+    return render_template(
+        "admin/pass.html", ctx=ctx, days=group_days(group_shifts(dated)),
+        undated_shifts=group_shifts(undated),
+        open_seats=sum(1 for slot in everything if slot.player_id is None),
+        swapping=pending_slot_ids(session, [slot.id for slot in everything]),
+        include_past=include_past, done=request.args.get("klart"),
+    )
 
 
 @admin_bp.route("/<slug>/lag")

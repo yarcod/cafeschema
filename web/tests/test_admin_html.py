@@ -40,7 +40,7 @@ def test_admin_home_goes_to_the_first_team(client, admins):
     response = client.get("/admin/")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/f14-bla/lag")
+    assert response.headers["Location"].endswith("/admin/f14-bla/pass")
 
 
 def test_without_rights_admin_does_not_exist(client, admins):

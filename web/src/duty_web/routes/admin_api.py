@@ -8,6 +8,7 @@ person, so removing an ansvarig locks her agent out on its next request.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
@@ -20,6 +21,7 @@ from ..admin.api_keys import authenticate
 from ..admin.executor import apply_plan, dry_run, scope_allows
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
+from ..admin.slot_ops import pending_slot_ids
 from ..admin.redact import KEY_PATTERN
 from ..models import ApiKey, Player, Slot, TeamRole, Venue
 from ..places import linkable_documents
@@ -108,6 +110,52 @@ def discovery():
             }
             for name, action in sorted(REGISTRY.items())
         },
+    })
+
+
+@api_bp.route("/slots", methods=["GET"])
+def slots():
+    """The team's shifts, one row per seat. Names only, never addresses."""
+    key = _key()
+    slug = request.args.get("team") or None
+    if not slug:
+        raise _Refused(400, {"errors": {"team": "Ange lagets slug, t.ex. f15"}})
+    ctx = _context(key, slug)
+    bounds = {}
+    for arg in ("from", "to"):
+        raw = request.args.get(arg)
+        if raw:
+            try:
+                bounds[arg] = date.fromisoformat(raw)
+            except ValueError:
+                raise _Refused(400, {"errors": {arg: "Ange datum som ÅÅÅÅ-MM-DD"}}) from None
+    session = _session()
+    query = session.query(Slot).filter(Slot.team_id == ctx.team.id)
+    if "from" in bounds:
+        query = query.filter(Slot.date >= bounds["from"])
+    if "to" in bounds:
+        query = query.filter(Slot.date <= bounds["to"])
+    rows = query.order_by(Slot.date.is_(None), Slot.date, Slot.start_time, Slot.id).all()
+    swapping = pending_slot_ids(session, [slot.id for slot in rows])
+    return jsonify({
+        "team": ctx.team.slug,
+        "slots": [
+            {
+                "id": slot.id,
+                "date": slot.date.isoformat() if slot.date else None,
+                "start": slot.start_time.strftime("%H:%M"),
+                "end": slot.end_time.strftime("%H:%M"),
+                "activity": slot.duty_name,
+                "venue": slot.venue,
+                "station": slot.station,
+                "station_id": slot.station_id,
+                "player": {"id": slot.player.id, "name": slot.player.name} if slot.player else None,
+                "child_name": slot.child_name,
+                "note": slot.note,
+                "pending_swap": slot.id in swapping,
+            }
+            for slot in rows
+        ],
     })
 
 

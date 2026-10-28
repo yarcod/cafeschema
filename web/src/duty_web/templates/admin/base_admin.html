@@ -39,8 +39,9 @@
   </div>
   {% if ctx.team %}
   <nav class="admin-nav">
-    <a class="{{ 'active' if request.endpoint == 'admin.lag' }}" href="{{ url_for('admin.lag', slug=ctx.team.slug) }}">Lag &amp; ansvariga</a>
+    <a class="{{ 'active' if request.endpoint == 'admin.pass_tab' }}" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug) }}">Pass</a>
     <a class="{{ 'active' if request.endpoint == 'admin.platser' }}" href="{{ url_for('admin.platser', slug=ctx.team.slug) }}">Platser</a>
+    <a class="{{ 'active' if request.endpoint == 'admin.lag' }}" href="{{ url_for('admin.lag', slug=ctx.team.slug) }}">Lag &amp; ansvariga</a>
   </nav>
   {% endif %}
   <main class="bench-main">
