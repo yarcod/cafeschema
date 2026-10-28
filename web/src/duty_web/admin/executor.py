@@ -64,6 +64,12 @@ def preview(session: Session, plan: Plan, render: Callable[[Session], T]) -> T |
         session.rollback()
 
 
+def _is_lock_error(exc: OperationalError) -> bool:
+    """SQLite's "someone else holds the write lock", as opposed to a real fault."""
+    message = str(exc.orig)
+    return "database is locked" in message or "database is busy" in message
+
+
 def _write_lock(session: Session) -> None:
     """Hold SQLite's write lock from the re-plan until the commit.
 
@@ -74,6 +80,8 @@ def _write_lock(session: Session) -> None:
     timeout) and plans against what this one committed.
     """
     session.commit()  # whatever the request did before: BEGIN can't nest
+    # Rows already loaded (person, team, roles) are re-read under the lock.
+    session.expire_all()
     connection = session.connection()
     # In tests every session shares one in-memory connection (StaticPool),
     # which may already be inside a transaction; there's no other writer then.
@@ -115,6 +123,9 @@ def apply_plan(
         _write_lock(session)
     except OperationalError as exc:
         session.rollback()
+        if not _is_lock_error(exc):
+            raise
+        logger.warning("Upptagen databas vid genomförande: %s (%s)", action.name, exc.orig)
         raise PlanTokenError(409, "busy") from exc
     try:
         plan = action.plan(session, ctx, inp)
@@ -139,7 +150,9 @@ def apply_plan(
     except OperationalError as exc:
         # Locked out at commit: nothing was written, so nothing is mailed.
         session.rollback()
-        logger.warning("Upptagen databas vid genomförande: %s", action.name)
+        if not _is_lock_error(exc):
+            raise
+        logger.warning("Upptagen databas vid genomförande: %s (%s)", action.name, exc.orig)
         raise PlanTokenError(409, "busy") from exc
     except Exception:
         session.rollback()

@@ -371,3 +371,68 @@ def test_no_preview_without_days_to_show(session_factory):
     plan.writes.append(lambda s: s.add(Venue(name="Hindås", name_key="hindas")))
 
     assert preview(session_factory(), plan, lambda s: "html") is None
+
+
+def _operational(message):
+    from sqlalchemy.exc import OperationalError
+
+    return OperationalError("COMMIT", {}, Exception(message))
+
+
+def test_a_lock_lost_at_commit_is_a_conflict_with_nothing_written(
+    session_factory, admins, echo
+):
+    session = session_factory()
+    ctx = admin_context(session, session.get(Person, admins["ansvarig"].id), "f14-bla")
+    plan, token = dry_run(session, ctx, echo, echo.parse({"text": "Hindås", "count": "1"}, {}),
+                          secret_key="test-secret")
+    sent = []
+
+    def locked(s):
+        raise _operational("database is locked")
+
+    original = type(echo).plan
+    type(echo).plan = lambda self, s, c, i: _with_writes(original(self, s, c, i), locked, sent)
+    try:
+        with pytest.raises(PlanTokenError) as caught:
+            apply_plan(session, ctx, token, secret_key="test-secret", via="test")
+    finally:
+        type(echo).plan = original
+
+    assert (caught.value.status, caught.value.code) == (409, "busy")
+    assert session_factory().query(Venue).count() == 0 and sent == []
+
+
+def _with_writes(plan, write, sent):
+    plan.writes.insert(0, write)
+    plan.after_commit.append(lambda: sent.append("mail"))
+    return plan
+
+
+@pytest.mark.parametrize("where", ["lock", "write"])
+def test_other_operational_errors_are_not_called_busy(
+    session_factory, admins, echo, monkeypatch, where
+):
+    from sqlalchemy.exc import OperationalError
+
+    from duty_web.admin import executor
+
+    session = session_factory()
+    ctx = admin_context(session, session.get(Person, admins["ansvarig"].id), "f14-bla")
+    plan, token = dry_run(session, ctx, echo, echo.parse({"text": "Hindås", "count": "1"}, {}),
+                          secret_key="test-secret")
+    sent = []
+    if where == "lock":
+        def broken(s):
+            raise _operational("disk I/O error")
+
+        monkeypatch.setattr(executor, "_write_lock", broken)
+    else:
+        original = type(echo).plan
+        monkeypatch.setattr(type(echo), "plan", lambda self, s, c, i: _with_writes(
+            original(self, s, c, i), lambda s: (_ for _ in ()).throw(_operational("disk I/O error")), sent))
+
+    with pytest.raises(OperationalError):
+        apply_plan(session, ctx, token, secret_key="test-secret", via="test")
+
+    assert session_factory().query(Venue).count() == 0 and sent == []
