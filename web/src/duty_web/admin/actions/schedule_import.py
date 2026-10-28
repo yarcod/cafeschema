@@ -2,26 +2,36 @@
 
 Every row is matched to the team's existing slots by the name the file gives
 the seat (slots.child_name), never by its current owner, so a swap someone
-accepted survives the next import of the same file:
+accepted survives the next import of the same file. The passes, in order:
 
-1. same date, time, activity, station and name → unchanged (a note may
-   change, and a seat with no player gets one once the name is known);
-2. same date, time, activity and station, another name → the player
-   changes, and the seat's pending swaps are cancelled;
-3. an undated slot the file now dates (same activity, time, station, name)
-   → the date is set, swaps kept;
-4. a seat at the station a corrected saved answer gave its activity (same
-   shift otherwise, same person) → the station changes, and its pending
-   swaps are cancelled;
-5. left in the file → added; left in the database → removed.
+1. exact: same date, time, activity, station and name → unchanged (a note
+   may change, and a seat with no player gets one once the name is known);
+2. same person: the same shift, and the seat's old name meant the row's
+   player (the roster, or a saved answer) → a respelling, only the record
+   changes;
+3. dated: an undated slot the file now dates (same activity, time,
+   station, person; a weekday note that fits) → the date is set, swaps kept;
+4. placed: a seat at the station a corrected saved answer gave its activity
+   (same shift otherwise, same person) → the station changes, and its
+   pending swaps are cancelled;
+5. held: a seat with a player, and a row whose name nobody has answered yet,
+   on the same shift (or dating the undated seat) → the seat keeps its
+   player and schedule name until the question is answered;
+6. moved: the same shift, another name → the player changes, and the
+   seat's pending swaps are cancelled;
+7. edited: a seat changed under Pass (same activity, same person, the
+   nearest date) → the file's date, time and station are put back, and its
+   pending swaps are cancelled;
+8. left in the file → added; left in the database → removed.
 
 What it may touch: activities in the file, in the seasons its dated rows
 fall in, plus undated slots. A slot dated before today, or one made under
-Pass (origin "admin"), can match step 1 but is never changed or removed.
-A place the file names but the club doesn't have stops the import. An
-activity with no place, or a name that isn't on the roster, becomes a
-question in Granska; answers are saved when the plan is applied, so the
-next import of the same file asks nothing.
+Pass (origin "admin"), can match passes 1 and 2 (after every other seat)
+but is never changed or removed. A place the file names but the club
+doesn't have stops the import. An activity with no place, or a name that
+isn't on the roster, becomes a question in Granska; answers are saved when
+the plan is applied and changes something, so the next import of the same
+file asks nothing.
 """
 
 from __future__ import annotations
@@ -144,17 +154,39 @@ def _reconcile(slot: Slot, want: _Want, kind: str, resolve) -> tuple[dict, list[
 
     One rule for every kind of match: "same" (the same shift, the same
     person), "dated" (an undated seat the file now dates), "placed" (a seat
-    at the station a corrected saved answer had given its activity) and
-    "moved" (the same shift, another name). Returns the fields to write,
+    at the station a corrected saved answer had given its activity), "held"
+    (a seat with a player, and a row whose name nobody has answered yet),
+    "moved" (the same shift, another name) and "edited" (a seat changed
+    under Pass, which the file puts back). Returns the fields to write,
     Granska's detail parts, and whether the change cancels the seat's
-    pending swaps. A "placed" seat changes its shift, which does. Only a
-    "moved" seat, or a seat a corrected saved answer had given to the wrong
-    player, changes owner; filling a seat that had none cancels nothing.
+    pending swaps. A shift change ("placed", "edited") does. Only a "moved"
+    seat, or a seat a corrected saved answer had given to the wrong player,
+    changes owner; filling a seat that had none cancels nothing. A "held"
+    seat keeps its player and its schedule name until the question is
+    answered.
     """
     fields: dict = {}
     diffs: list[str] = []
     cancels = False
-    if kind == "dated":
+    if kind == "edited":
+        if slot.date != want.day:
+            fields["date"] = want.day
+            diffs.append(
+                f"datum satt: {day_label(want.day)}" if slot.date is None
+                else f"datum {day_label(slot.date)} → {day_label(want.day)}"
+            )
+        if (slot.start_time, slot.end_time) != (want.start, want.end):
+            fields.update(start_time=want.start, end_time=want.end)
+            diffs.append(
+                f"tid {slot.start_time:%H:%M}–{slot.end_time:%H:%M} → {want.start:%H:%M}–{want.end:%H:%M}"
+            )
+        if slot.station_id != want.station_id:
+            fields.update(station_id=want.station_id, station=want.station, venue=want.venue)
+            diffs.append(f"station {slot.station or 'ingen'} → {want.station or 'ingen'}")
+        # Every earlier pass took the seats on the row's shift, so this one
+        # is on another shift: a change of shift, whatever differs.
+        cancels = True
+    if kind == "dated" or (kind == "held" and slot.date is None and want.day is not None):
         fields["date"] = want.day
         diffs.append(f"datum satt: {day_label(want.day)}")
     if kind == "placed":
@@ -167,14 +199,15 @@ def _reconcile(slot: Slot, want: _Want, kind: str, resolve) -> tuple[dict, list[
             fields["player_id"] = want.player_id
             diffs.append(f"{owner_name(slot)} → {want.owner}")
             cancels = cancels or slot.player_id is not None
-    elif slot.player_id is None and want.player_id is not None:
-        fields["player_id"] = want.player_id
-        diffs.append(f"{owner_name(slot)} → {want.owner}")
-    elif wrong is not None and slot.player_id == wrong.id and want.player_id != wrong.id:
-        fields["player_id"] = want.player_id
-        diffs.append(f"{owner_name(slot)} → {want.owner}")
-        cancels = True
-    if _spelling(slot) != want.key or (slot.child_name or "") != want.spelling:
+    elif kind != "held":
+        if slot.player_id is None and want.player_id is not None:
+            fields["player_id"] = want.player_id
+            diffs.append(f"{owner_name(slot)} → {want.owner}")
+        elif wrong is not None and slot.player_id == wrong.id and want.player_id != wrong.id:
+            fields["player_id"] = want.player_id
+            diffs.append(f"{owner_name(slot)} → {want.owner}")
+            cancels = True
+    if kind != "held" and (_spelling(slot) != want.key or (slot.child_name or "") != want.spelling):
         fields["child_name"] = want.spelling
         if "player_id" not in fields:
             diffs.append(f"namnet i schemat: '{slot.child_name or ''}' → '{want.spelling}'")
@@ -184,7 +217,8 @@ def _reconcile(slot: Slot, want: _Want, kind: str, resolve) -> tuple[dict, list[
         # goes, since the date says it: "datum satt" is the whole story.
         if (slot.note or None) != want.note:
             fields["note"] = want.note
-            if not (kind == "dated" and slot.note in WEEKDAY_NOTES):
+            gets_date = slot.date is None and fields.get("date") is not None
+            if not (gets_date and slot.note in WEEKDAY_NOTES):
                 diffs.append(_note_change(slot.note, want.note))
     return fields, diffs, cancels
 
@@ -363,11 +397,18 @@ def _want(session, i, row, resolve: _Resolver) -> _Want:
     )
 
 
-def _pair(slots: list[Slot], wants: list[_Want], match) -> list[tuple[Slot, _Want]]:
-    """Take matching (slot, want) pairs out of both lists, first match first."""
+def _pair(slots: list[Slot], wants: list[_Want], match, rank=None) -> list[tuple[Slot, _Want]]:
+    """Take matching (slot, want) pairs out of both lists.
+
+    Each row takes the first matching slot, or with `rank` the matching
+    slot that ranks lowest for it.
+    """
     pairs = []
     for want in list(wants):
-        slot = next((s for s in slots if match(s, want)), None)
+        if rank is None:
+            slot = next((s for s in slots if match(s, want)), None)
+        else:
+            slot = min((s for s in slots if match(s, want)), key=lambda s: rank(s, want), default=None)
         if slot is not None:
             slots.remove(slot)
             wants.remove(want)
@@ -471,10 +512,25 @@ class ImportSchedule(Action):
         plan.basis.append(["name_aliases", resolve.saved_name_rows])
         plan.basis.append(["activity_stations", resolve.saved_place_rows])
 
-        # Identity first, arbitrary pairing last. Every pass before the last
-        # one only pairs a seat with a row that means the same person, so a
-        # respelled or reordered file can't hand one family's seat to another.
-        slots, todo = list(existing), list(wants)
+        def unknown(want: _Want) -> bool:
+            # Nobody knows who the row means yet: not the roster, no answer.
+            return want.player_id is None and want.spelling in resolve.unknown
+
+        def nearest(slot: Slot, want: _Want) -> tuple:
+            # The seat whose date is closest to the row's. Undated counts as
+            # farthest from a date, and as nearest to an undated row.
+            if slot.date is not None and want.day is not None:
+                return (0, abs((slot.date - want.day).days), slot.id)
+            return (0 if slot.date is None and want.day is None else 1, 0, slot.id)
+
+        # Identity first, arbitrary pairing late. Every pass but "moved" only
+        # pairs a seat with a row that means the same person (or, "held",
+        # keeps the seat's person), so a respelled or reordered file can't
+        # hand one family's seat to another. Passes 1 and 2 may match a
+        # frozen seat, but try the others first, so a seat made under Pass
+        # only matches when no imported seat does.
+        slots = sorted(existing, key=lambda s: (frozen(s), s.id))
+        todo = list(wants)
         pairs = [(s, w, "same") for s, w in _pair(
             slots, todo, lambda s, w: _ident(s) == w.ident and _spelling(s) == w.key
         )]
@@ -483,7 +539,7 @@ class ImportSchedule(Action):
         )]
         kept_admin = [s for s in slots if s.origin != ORIGIN_IMPORT]
         kept_past = [s for s in slots if s.origin == ORIGIN_IMPORT and frozen(s)]
-        slots = [s for s in slots if not frozen(s)]
+        slots = sorted((s for s in slots if not frozen(s)), key=lambda s: s.id)
         skipped = [w for w in todo if w.day is not None and w.day < today]
         todo = [w for w in todo if w.day is None or w.day >= today]
         pairs += [(s, w, "dated") for s, w in _pair(slots, todo, lambda s, w: (
@@ -494,7 +550,22 @@ class ImportSchedule(Action):
             _ident(s)[:4] + _ident(s)[5:] == w.ident[:4] + w.ident[5:]
             and same_person(s, w) and placed_before(s, w)
         ))]
+        # An unanswered name never takes a seat from the player it has.
+        pairs += [(s, w, "held") for s, w in _pair(slots, todo, lambda s, w: (
+            s.player_id is not None and unknown(w) and _ident(s) == w.ident
+        ))]
+        pairs += [(s, w, "held") for s, w in _pair(slots, todo, lambda s, w: (
+            s.player_id is not None and unknown(w) and s.date is None and w.day is not None
+            and _ident(s)[1:5] == w.ident[1:5] and _weekday_fits(s.note, w.day)
+        ))]
         pairs += [(s, w, "moved") for s, w in _pair(slots, todo, lambda s, w: _ident(s) == w.ident)]
+        # A seat changed under Pass since the last import: the file puts its
+        # date, time and station back, and the seat keeps its id. A
+        # "Fredagar" seat still only gets a Friday.
+        pairs += [(s, w, "edited") for s, w in _pair(slots, todo, lambda s, w: (
+            canonical_duty_name(s.duty_name) == w.activity and same_person(s, w)
+            and (s.date is not None or w.day is None or _weekday_fits(s.note, w.day))
+        ), rank=nearest)]
 
         edits: list[tuple[int, dict]] = []
         changed: list[int] = []
@@ -519,11 +590,19 @@ class ImportSchedule(Action):
             plan.add("add", "seat", want.label(), want.owner)
             touched.append(want.day)
 
+        # An unknown name's seats: the ones it leaves free (added, or kept
+        # Ledigt), and the ones that keep their player until it is answered.
+        # A past row or a frozen seat changes nothing either way.
+        free = Counter(w.spelling for w in todo if unknown(w))
+        free.update(w.spelling for s, w, _ in pairs if unknown(w) and not frozen(s) and s.player_id is None)
+        held = Counter(w.spelling for _, w, kind in pairs if kind == "held")
         roster_choices = [[p.id, p.name] for p in roster]
-        for spelling, count in sorted(resolve.unknown.items()):
-            plan.warnings.append(
-                f"'{spelling}' finns inte i laglistan: {count} pass blir lediga tills du väljer vem det är."
-            )
+        for spelling in sorted(set(free) | set(held)):
+            if free[spelling]:
+                plan.warnings.append(
+                    f"'{spelling}' finns inte i laglistan: {free[spelling]} pass blir lediga "
+                    "tills du väljer vem det är."
+                )
             plan.questions.append({
                 "field": f"name::{spelling}", "label": f"Vem är '{spelling}'?", "choices": roster_choices,
             })
@@ -565,6 +644,8 @@ class ImportSchedule(Action):
             + " och pass utan datum. Pass före i dag och pass som lagts till under Pass ändras aldrig."
         )
         plan.notes.append(f"{unchanged} pass oförändrade.")
+        for spelling, count in sorted(held.items()):
+            plan.notes.append(f"{count} pass behåller sin spelare tills du svarar vem '{spelling}' är.")
         if skipped:
             plan.notes.append(f"{len(skipped)} pass före i dag i filen läggs inte till: historiken ändras inte.")
         if kept_past:
@@ -632,6 +713,6 @@ class ImportSchedule(Action):
 
         if removed or edits or adds:
             plan.writes.append(write)
-        if new_names or new_places:
+        if (new_names or new_places) and plan.changes:
             plan.writes.append(save_answers)
         return plan

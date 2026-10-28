@@ -713,3 +713,180 @@ def test_both_doors_plan_the_same(client, admins, api_keys, csrf_token, arena):
     assert api["counts"]["add"] == 3
     for change in api["changes"]:
         assert change["summary"] in page
+
+
+def _pushed_seat(session_factory, seeded, arena, day, **fields):
+    # As `just schedule-push` left it: the name name_fixes.json corrected,
+    # and its player.
+    return _cafe_slot(session_factory, seeded["team"].id, day, station_id=arena,
+                      child_name="Tova Exempel", player_id=seeded["player"].id, **fields)
+
+
+def test_an_unanswered_spelling_never_empties_a_seat_that_has_a_player(
+    app, session_factory, admins, seeded, second_team, arena, mails
+):
+    seat = _pushed_seat(session_factory, seeded, arena, SATURDAY.date())
+    swap = _swap(session_factory, seat, second_team["neighbour_slot"].id)
+
+    # The coach's file still has the typo the fix corrected.
+    plan = _run(app, session_factory, admins["ansvarig"],
+                _rows([46, "Cafépass", SATURDAY, "11:30-16:00", "Tova Exempell", None, None]))
+
+    assert plan.changes == []
+    assert "1 pass behåller sin spelare tills du svarar vem 'Tova Exempell' är." in plan.notes
+    assert not any("blir lediga" in w for w in plan.warnings)
+    assert [q["field"] for q in plan.questions] == ["name::Tova Exempell"]
+    session = session_factory()
+    slot = session.get(Slot, seat)
+    assert (slot.player_id, slot.child_name) == (seeded["player"].id, "Tova Exempel")
+    assert session.get(SwapRequest, swap).status == "pending" and mails == []
+
+
+def test_an_unanswered_spelling_dates_a_held_seat_and_keeps_its_swaps(
+    app, session_factory, admins, seeded, second_team, arena, mails
+):
+    seat = _pushed_seat(session_factory, seeded, arena, None, note="Lördagar")
+    swap = _swap(session_factory, seat, second_team["neighbour_slot"].id, status="accepted")
+
+    plan = _run(app, session_factory, admins["ansvarig"],
+                _rows([46, "Cafépass", SATURDAY, "11:30-16:00", "Tova Exempell", None, None]))
+
+    assert [(c.op, c.detail) for c in plan.changes] == [("update", "datum satt: lör 16 jan")]
+    assert "1 pass behåller sin spelare tills du svarar vem 'Tova Exempell' är." in plan.notes
+    session = session_factory()
+    slot = session.get(Slot, seat)
+    assert (slot.date, slot.player_id, slot.child_name) == (
+        SATURDAY.date(), seeded["player"].id, "Tova Exempel"
+    )
+    assert session.get(SwapRequest, swap).status == "accepted" and mails == []
+
+
+def test_the_unknown_name_warning_counts_only_seats_left_free(app, session_factory, admins, seeded, arena):
+    _pushed_seat(session_factory, seeded, arena, SATURDAY.date())
+
+    plan = _run(app, session_factory, admins["ansvarig"], _rows(
+        [40, "Cafépass", datetime(2026, 10, 3), "11:30-16:00", "Tova Exempell", None, None],   # past
+        [46, "Cafépass", SATURDAY, "11:30-16:00", "Tova Exempell", None, None],                # held
+        [47, "Cafépass", datetime(2027, 1, 23), "11:30-16:00", "Tova Exempell", None, None],   # added
+    ), apply=False)
+
+    assert [(c.op, c.detail) for c in plan.changes] == [("add", "Ledigt ('Tova Exempell')")]
+    assert plan.warnings == [
+        "'Tova Exempell' finns inte i laglistan: 1 pass blir lediga tills du väljer vem det är."
+    ]
+    assert "1 pass behåller sin spelare tills du svarar vem 'Tova Exempell' är." in plan.notes
+
+
+def test_answering_a_held_spelling_with_its_player_only_changes_the_record(
+    app, session_factory, admins, seeded, arena
+):
+    seat = _pushed_seat(session_factory, seeded, arena, SATURDAY.date())
+    rows = _rows([46, "Cafépass", SATURDAY, "11:30-16:00", "Tova Exempell", None, None])
+    _run(app, session_factory, admins["ansvarig"], rows)
+
+    plan = _run(app, session_factory, admins["ansvarig"], rows, names={"Tova Exempell": seeded["player"].id})
+
+    assert [(c.op, c.detail) for c in plan.changes] == [
+        ("update", "namnet i schemat: 'Tova Exempel' → 'Tova Exempell'")
+    ]
+    slot = session_factory().get(Slot, seat)
+    assert (slot.player_id, slot.child_name) == (seeded["player"].id, "Tova Exempell")
+
+
+def test_a_seat_edited_under_pass_keeps_its_id_and_accepted_swap(
+    app, session_factory, admins, seeded, second_team, arena, mails
+):
+    ida = _ida(session_factory, seeded)
+    _run(app, session_factory, admins["ansvarig"], _rows(*SEASON))
+    seat = _seat(session_factory, "Tova Exempel", SATURDAY.date())
+    session = session_factory()
+    # Pass moved its time, then a swap gave it to Ida.
+    slot = session.get(Slot, seat)
+    slot.start_time, slot.player_id = time(12), ida
+    session.commit()
+    accepted = _swap(session_factory, seat, second_team["neighbour_slot"].id, status="accepted")
+    pending = _swap(session_factory, seat, seeded["future_slot"].id)
+
+    plan = _run(app, session_factory, admins["ansvarig"], _rows(*SEASON))
+
+    assert [(c.op, c.detail) for c in plan.changes] == [("update", "tid 12:00–16:00 → 11:30–16:00")]
+    session = session_factory()
+    slot = session.get(Slot, seat)
+    assert (slot.start_time, slot.player_id, slot.child_name) == (time(11, 30), ida, "Tova Exempel")
+    assert (session.get(SwapRequest, accepted).status, session.get(SwapRequest, pending).status) == (
+        "accepted", "cancelled"
+    )
+    assert len(mails) == 2
+
+
+def test_a_date_set_under_pass_is_put_back_by_the_file_as_an_update(
+    app, session_factory, admins, seeded, second_team, arena, mails
+):
+    _run(app, session_factory, admins["ansvarig"], _rows(*SEASON))
+    (seat,) = [s.id for s in session_factory().query(Slot).filter_by(duty_name="Cafépass", date=None)]
+    session = session_factory()
+    session.get(Slot, seat).date = date(2027, 2, 5)   # Sätt datum
+    session.commit()
+    accepted = _swap(session_factory, seat, second_team["neighbour_slot"].id, status="accepted")
+    pending = _swap(session_factory, seat, seeded["future_slot"].id)
+
+    plan = _run(app, session_factory, admins["ansvarig"], _rows(*SEASON))
+
+    assert [(c.op, c.detail) for c in plan.changes] == [("update", "datum fre 5 feb → datum ej satt")]
+    session = session_factory()
+    slot = session.get(Slot, seat)
+    assert (slot.date, slot.note, slot.player_id) == (None, "Fredagar", seeded["player"].id)
+    assert (session.get(SwapRequest, accepted).status, session.get(SwapRequest, pending).status) == (
+        "accepted", "cancelled"
+    )
+
+
+def test_an_import_seat_is_matched_before_a_shift_made_under_pass(app, session_factory, admins, seeded, arena):
+    team_id, tova = seeded["team"].id, seeded["player"].id
+    twin = _cafe_slot(session_factory, team_id, SATURDAY.date(), origin="admin", station_id=arena,
+                      player_id=tova, child_name="Tova Exempel")
+    seat = _cafe_slot(session_factory, team_id, SATURDAY.date(), station_id=arena,
+                      player_id=tova, child_name="Tova Exempel")
+
+    plan = _run(app, session_factory, admins["ansvarig"],
+                _rows([46, "Cafépass", SATURDAY, "11:30-16:00", "Tova Exempel", None, None]))
+
+    assert plan.public()["counts"] == {"add": 0, "update": 0, "delete": 0}
+    assert "1 pass som lagts till under Pass lämnas orörda." in plan.notes
+    session = session_factory()
+    assert session.get(Slot, twin) is not None and session.get(Slot, seat) is not None
+
+
+def test_a_frozen_seat_matches_a_respelling_and_is_never_changed_or_doubled(
+    app, session_factory, admins, seeded, arena
+):
+    tova = seeded["player"].id
+    twin = _cafe_slot(session_factory, seeded["team"].id, SATURDAY.date(), origin="admin", station_id=arena,
+                      player_id=tova, child_name="Tova Exempel")
+
+    plan = _run(app, session_factory, admins["ansvarig"],
+                _rows([46, "Cafépass", SATURDAY, "11:30-16:00", "Tova E.", None, None]),
+                names={"Tova E.": tova})
+
+    assert plan.public()["counts"] == {"add": 0, "update": 0, "delete": 0}
+    slot = session_factory().get(Slot, twin)
+    assert (slot.player_id, slot.child_name) == (tova, "Tova Exempel")
+    assert session_factory().query(Slot).filter_by(duty_name="Cafépass").count() == 1
+
+
+def test_an_api_apply_that_changes_nothing_saves_no_answer(client, admins, api_keys, seeded, session_factory):
+    ida = _ida(session_factory, seeded)
+    body = {
+        "team": "f14-bla", "names": {"Elin Exempel": ida},
+        # Only a past row: the answer changes no seat.
+        "rows": _rows([40, "Cafépass", datetime(2026, 10, 3), "11:30-16:00", "Elin Exempel", None, None]),
+    }
+    reviewed = client.post("/admin/api/schedule.import", json=body,
+                           headers=bearer(api_keys["ansvarig"])).get_json()
+
+    applied = client.post("/admin/api/schedule.import", json={
+        "team": "f14-bla", "dry_run": False, "plan_token": reviewed["plan_token"],
+    }, headers=bearer(api_keys["ansvarig"]))
+
+    assert reviewed["changes"] == [] and applied.get_json()["applied"] is True
+    assert session_factory().query(NameAlias).count() == 0
