@@ -87,6 +87,18 @@ def send_swap_declined(
     _send_each(emails, "Ert bytesförslag avböjdes", body)
 
 
+def send_swap_cancelled(
+    emails: Sequence[str], *, your_slot: str, link: str | None = None,
+) -> None:
+    body = (
+        f"Ett bytesförslag om ert pass {your_slot} ställdes in, eftersom lagets "
+        "ansvariga ändrade schemat. Ert schema visar hur det ser ut nu."
+    )
+    if link:
+        body += f"\n\nErt schema:\n{link}"
+    _send_each(emails, "Ett bytesförslag ställdes in", body)
+
+
 def send_admin_granted(email: str, team_name: str, link: str) -> None:
     _send(
         email,

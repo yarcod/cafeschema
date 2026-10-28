@@ -6,12 +6,17 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from datetime import date, time
+from functools import partial
 
+from flask import url_for
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from ..clock import utcnow
 from ..dates import short_date_sv, weekday_sv
 from ..models import Slot, SwapRequest
+from ..notifications import send_swap_cancelled
+from ..roster import notifiable_emails
 from .errors import ValidationError
 
 _CLOCK = re.compile(r"(\d{1,2})(?:[:.](\d{2}))?")
@@ -110,3 +115,69 @@ def pending_slot_ids(session: Session, slot_ids: Iterable[int]) -> set[int]:
     for swap in pending_swaps(session, ids):
         found.update({swap.proposer_slot_id, swap.target_slot_id} & ids)
     return found
+
+
+def plan_swap_cancellations(
+    session: Session, plan, *, changed: Iterable[int] = (), deleted: Iterable[int] = ()
+) -> None:
+    """The pending swaps on slots this plan changes or removes.
+
+    One warning per swap, naming both families' players, so Granska says
+    beforehand who will get mail. At apply a changed slot's pending swaps
+    are marked cancelled. A removed slot's swap rows, in any status, are
+    deleted with it, or the foreign key refuses the delete. After commit
+    each family gets one mail. Call this before adding the action's own slot
+    writes: its write must run first.
+    """
+    changed, deleted = set(changed), set(deleted)
+    touched = sorted(changed | deleted)
+    if touched:
+        every = (
+            session.query(SwapRequest)
+            .filter(or_(
+                SwapRequest.proposer_slot_id.in_(touched),
+                SwapRequest.target_slot_id.in_(touched),
+            ))
+            .order_by(SwapRequest.id)
+            .all()
+        )
+        plan.basis.extend([swap.id, swap.status] for swap in every)
+    swaps = pending_swaps(session, touched)
+    link = url_for("schedule.mine", _external=True)
+    for swap in swaps:
+        proposer, target = swap.proposer_slot, swap.target_slot
+        plan.warnings.append(
+            f"Bytet mellan {owner_name(proposer)} ({slot_label(proposer)}) och "
+            f"{owner_name(target)} ({slot_label(target)}) ställs in. "
+            "Båda familjerna får ett mejl."
+        )
+        for slot in (proposer, target):
+            emails = notifiable_emails(session, slot)
+            if emails:
+                plan.after_commit.append(
+                    partial(send_swap_cancelled, emails, your_slot=slot_label(slot), link=link)
+                )
+    # A swap that touches a removed slot goes with the delete below; marking
+    # it cancelled as well would update a row that's no longer there.
+    to_cancel = [
+        swap.id for swap in swaps
+        if not ({swap.proposer_slot_id, swap.target_slot_id} & deleted)
+    ]
+    removed = sorted(deleted)
+    if not to_cancel and not removed:
+        return
+
+    def write(s: Session) -> None:
+        if removed:
+            s.query(SwapRequest).filter(
+                or_(
+                    SwapRequest.proposer_slot_id.in_(removed),
+                    SwapRequest.target_slot_id.in_(removed),
+                )
+            ).delete(synchronize_session=False)
+        now = utcnow()
+        for swap_id in to_cancel:
+            swap = s.get(SwapRequest, swap_id)
+            swap.status, swap.resolved_at = "cancelled", now
+
+    plan.writes.append(write)

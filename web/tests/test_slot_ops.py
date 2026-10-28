@@ -1,9 +1,12 @@
 """Shared helpers for the slot actions: clock times, labels, team scoping, swaps."""
 
+import json
 from datetime import date, time
 
 import pytest
 
+from duty_web.admin import slot_ops
+from duty_web.admin.actions.base import Plan
 from duty_web.admin.errors import ValidationError
 from duty_web.admin.slot_ops import (
     day_label,
@@ -13,7 +16,7 @@ from duty_web.admin.slot_ops import (
     team_slots,
 )
 from duty_web.clock import utcnow
-from duty_web.models import Slot, SwapRequest
+from duty_web.models import Person, Slot, SwapRequest
 
 
 @pytest.mark.parametrize("raw, expected", [
@@ -75,3 +78,101 @@ def test_pending_swaps_are_found_on_either_side(session_factory, seeded, second_
 
     assert pending_slot_ids(session, [theirs]) == {theirs}
     assert pending_slot_ids(session, [mine, seeded["slot"].id]) == {mine}
+
+
+def _run_writes(session, plan):
+    for write in plan.writes:
+        write(session)
+    session.commit()
+
+
+def _pending(session, seeded, second_team, status="pending"):
+    swap = SwapRequest(
+        proposer_slot_id=seeded["future_slot"].id,
+        target_slot_id=second_team["neighbour_slot"].id,
+        created_at=utcnow(), status=status,
+    )
+    session.add(swap)
+    session.commit()
+    return swap
+
+
+def test_a_changed_seat_cancels_its_swap_and_mails_both_families(
+    app, session_factory, seeded, second_team, monkeypatch
+):
+    sent = []
+    monkeypatch.setattr(slot_ops, "send_swap_cancelled", lambda emails, **kw: sent.append((emails, kw)))
+    session = session_factory()
+    swap = _pending(session, seeded, second_team)
+    plan = Plan()
+
+    with app.test_request_context():
+        slot_ops.plan_swap_cancellations(session, plan, changed=[seeded["future_slot"].id])
+    _run_writes(session, plan)
+    for callback in plan.after_commit:
+        callback()
+
+    (warning,) = plan.warnings
+    assert "Tova Exempel" in warning and "Moa Granne" in warning and "ställs in" in warning
+    assert session.get(SwapRequest, swap.id).status == "cancelled"
+    assert len(sent) == 2
+    assert sorted(len(emails) for emails, _ in sent) == [1, 2]   # Moa's one parent, Tova's two
+    assert "@" not in json.dumps(plan.public(), ensure_ascii=False)
+
+
+def test_a_removed_seat_takes_every_swap_row_with_it(app, session_factory, seeded, second_team):
+    session = session_factory()
+    _pending(session, seeded, second_team)
+    _pending(session, seeded, second_team, status="accepted")
+    plan = Plan()
+    doomed = seeded["future_slot"].id
+
+    with app.test_request_context():
+        slot_ops.plan_swap_cancellations(session, plan, deleted=[doomed])
+    plan.writes.append(lambda s: s.delete(s.get(Slot, doomed)))
+    _run_writes(session, plan)
+
+    assert session.query(SwapRequest).count() == 0
+    assert session.get(Slot, doomed) is None
+    assert len(plan.warnings) == 1   # only the pending one is news to anyone
+
+
+def test_a_family_that_turned_mail_off_gets_none(app, session_factory, seeded, second_team, monkeypatch):
+    sent = []
+    monkeypatch.setattr(slot_ops, "send_swap_cancelled", lambda emails, **kw: sent.append(emails))
+    session = session_factory()
+    _pending(session, seeded, second_team)
+    session.query(Person).filter_by(email="maja@exempel.se").one().email_notifications = False
+    session.commit()
+    plan = Plan()
+
+    with app.test_request_context():
+        slot_ops.plan_swap_cancellations(session, plan, changed=[seeded["future_slot"].id])
+    for callback in plan.after_commit:
+        callback()
+
+    assert len(sent) == 1
+
+
+def test_a_swap_answered_after_review_changes_the_plan(app, session_factory, seeded, second_team):
+    session = session_factory()
+    swap = _pending(session, seeded, second_team)
+    reviewed, now = Plan(), Plan()
+
+    with app.test_request_context():
+        slot_ops.plan_swap_cancellations(session, reviewed, changed=[seeded["future_slot"].id])
+        session.get(SwapRequest, swap.id).status = "accepted"
+        session.commit()
+        slot_ops.plan_swap_cancellations(session, now, changed=[seeded["future_slot"].id])
+
+    assert reviewed.digest() != now.digest()
+
+
+def test_nothing_to_cancel_adds_nothing(app, session_factory, seeded):
+    plan = Plan()
+
+    with app.test_request_context():
+        slot_ops.plan_swap_cancellations(session_factory(), plan, changed=[seeded["future_slot"].id])
+
+    assert plan.warnings == [] and plan.writes == [] and plan.after_commit == []
+    assert plan.basis == []
