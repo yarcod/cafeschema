@@ -1,0 +1,29 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Bemanna{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h2>Bemanna</h2>
+  <span class="count">{{ seats|length }} {{ "plats" if seats|length == 1 else "platser" }}</span>
+</div>
+<form class="card" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="seed" value="{{ seed }}">
+  <p class="hint">Den som har minst pass den här säsongen går först. Slumpen avgör bara mellan lika. Lås en plats om ni redan vet vem som tar den.</p>
+  {% for key in ("slot_ids", "locked") %}
+    {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
+  {% endfor %}
+  {% for seat in seats %}
+  <div class="pass-seat">
+    <label><input type="checkbox" name="slot_ids" value="{{ seat.id }}" checked> {{ seat.label }}</label>
+    <select name="lock-{{ seat.id }}" class="admin-input" aria-label="Lås platsen till en spelare">
+      <option value="">Slumpa</option>
+      {% for value, label in players %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  {% else %}
+  <p class="empty-state">Välj lediga platser under Pass först.</p>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Granska</button>
+  <p class="agent-hint">agent → <b>slots.assign</b> med <b>slot_ids</b>, och valfritt <b>locked</b> och <b>seed</b></p>
+</form>
+{% endblock %}

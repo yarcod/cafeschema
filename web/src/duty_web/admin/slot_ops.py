@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..clock import utcnow
 from ..dates import short_date_sv, weekday_sv
-from ..models import Slot, SwapRequest
+from ..models import ORIGIN_IMPORT, Player, Slot, SwapRequest
 from ..notifications import send_swap_cancelled
 from ..roster import notifiable_emails
 from .errors import ValidationError
@@ -181,3 +181,16 @@ def plan_swap_cancellations(
             swap.status, swap.resolved_at = "cancelled", now
 
     plan.writes.append(write)
+
+
+def owner_fields(slot: Slot, player: Player | None) -> dict:
+    """The fields that give a seat a new owner, or none.
+
+    On a seat the coach's file put there, child_name is the file's spelling
+    and stays, as it does through a swap: schedule.import matches on it, so
+    the next import of the same file keeps this owner instead of putting the
+    file's name back. Anywhere else the name follows the player.
+    """
+    if slot.origin == ORIGIN_IMPORT and slot.child_name:
+        return {"player_id": player.id if player else None, "child_name": slot.child_name}
+    return {"player_id": player.id if player else None, "child_name": player.name if player else None}
