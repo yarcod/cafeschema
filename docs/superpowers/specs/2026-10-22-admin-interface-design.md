@@ -1,7 +1,7 @@
 # Admin interface — design
 
 **Date:** 2026-10-22
-**Status:** Approved design, not yet implemented
+**Status:** Approved design; plans 1 and 2 implemented
 **Repo:** `360-mailer`
 **Package:** `web` (`duty_web`)
 
@@ -101,6 +101,9 @@ credential is ever stored by this app.
 "Randomly assign" means fair first, random second: whoever has the fewest
 shifts this season goes first, and chance only decides among equals. Same
 seed, same result, so a plan can be reviewed and then applied unchanged.
+Ties are broken in this order: fewest shifts this season, then a sibling
+already on the shift, then no shift the week before or after, then chance.
+Fair first means a sibling goes first only among equally loaded players.
 
 ### D8 — Two roles, scoped per team, trust follows permission
 
@@ -182,8 +185,8 @@ warnings)`.
 |---|---|---|
 | `slots.create` | team | days × shift rows → empty seats |
 | `slots.assign` | team | fair staffing of seats (D7) |
-| `slot.update` | team | edit one shift (date, time, station, people) |
-| `slot.delete` | team | remove one shift |
+| `slot.update` | team | edit one shift's seats (date, time, station, note; one seat's player) |
+| `slot.delete` | team | remove one shift's seats |
 | `schedule.import` | team | coach's Excel → diff |
 | `roster.import` | team | 360Player members CSV → diff, leaders, exempt |
 | `venue.create` | club | |
@@ -199,9 +202,9 @@ warnings)`.
 Input: `team, days[], activity, rows[{start, end, station_id, seats, on_days[]}]`.
 Creates one `Slot` per seat, unassigned. Validates end after start and that the
 station exists. Warns (doesn't block) when the team already has an overlapping
-shift at the same station. The UI picks days on the parent app's calendar
-(click, shift-click for a range, shortcuts *Helgen*, *Lör–sön*, *En dag*) and
-goes straight on to staffing with the new seats selected.
+shift at the same station. The UI picks days with two date fields and shortcuts (*Den här helgen*,
+*Nästa helg*, *I dag*), and each row can be limited to some weekdays. A JS
+range picker can be added later on top of the same form.
 
 ### Fair staffing — `slots.assign`
 
@@ -215,8 +218,8 @@ Input: `slot_ids[], locked{slot_id: player_id}, seed`.
   the lowest load, where:
   - a candidate who already has a shift that day is not eligible (hard rule);
   - a shift the weekend before or after adds a penalty (soft rule);
-  - a sibling of someone already on a shift with the same time and station
-    goes first for its free seat;
+  - among equally loaded candidates, a sibling of someone already on the
+    shift goes first;
   - remaining ties are broken by `random.Random(seed)`.
 - **Locked seats** are never touched.
 - **Unfillable seats** stay *Ledigt* with a reason ("alla kvarvarande har
@@ -224,15 +227,24 @@ Input: `slot_ids[], locked{slot_id: player_id}, seed`.
 - The plan reports each affected player's load before → after, plus the
   team's mean and spread.
 
+Only empty seats are filled: a filled seat in the selection is left alone,
+and `locked` pins a player to an empty one. Without a `seed`, one is chosen
+and carried in the plan token.
+
+A lock keeps the draw's rules: it's refused when its player already has a
+shift that day (another lock included) or is already on that shift. A
+selection is staffed in one season; dated seats from two seasons are
+refused, and an all-undated selection carries its season in the plan token.
+
 ### Excel import — `schedule.import`
 
 Replaces today's delete-and-reinsert `import_schedule` with a diff. The
 coach's file is translated in-app (the logic of `scripts/build_seed_xlsx.py`
 moves into `duty_web`). Each row is matched against existing slots on
-*(date, start, end, activity, station, player)*:
+*(date, start, end, activity, station, name)*, where the name is the one the schedule gave the seat (`slots.child_name`), never its current owner:
 
 - identical key → unchanged; the slot keeps its id and its swaps;
-- same date, time, activity and station, different player → `update`;
+- same date, time, activity and station, different name → `update`;
 - an undated slot that now has a date (same activity, time and player) →
   `update`, so it keeps its id;
 - left over in the file → `add`; left over in the database → `delete`, with a
@@ -244,6 +256,45 @@ Unknown venue or station names stop the import with "Okänd station 'X' på
 near-duplicate. A schedule name that matches no player becomes a pick list in
 Granska ("Vem är 'Elin Exempel'? [välj spelare]"), replacing
 `data/name_fixes.json`.
+
+Matching on the schedule's name is what keeps swaps: an accepted swap
+changes a seat's owner, never its name, so the same file imported again
+finds the seat unchanged. The import changes a player only when the file
+changes the name.
+
+Rows are paired by identity before anything else: the same shift (an
+undated one told apart by its weekday note) with the same name, then with
+a name that means the same player (a respelling, which changes only the
+record), then an undated seat the file dates (on a fitting weekday), and
+only then the same shift with another name. One rule then reconciles
+every pair, whatever pass made it.
+
+Besides those four passes there is a "placed" pass: when an ansvarig
+corrects a saved place answer, seats at the previously saved station move to
+the new one (same id, owner kept, pending swaps cancelled) instead of being
+deleted and re-added.
+
+What it may touch: activities that appear in the file, in the seasons its
+dated rows fall in (1 August – 31 July), plus undated slots. A slot dated
+before today, or one made under Pass (`slots.origin = 'admin'`), may match
+an identical row but is never changed or removed, and a past row with no
+match isn't added. Granska states this boundary.
+
+A changed name cancels that seat's pending swaps (mail to both families
+after commit); a newly dated undated slot keeps its swaps. An activity with
+no known place becomes a pick list in Granska ("Var hålls 'X'?") and is
+imported without a place until answered; a place the file *names* that
+doesn't exist still stops the import. A name that isn't on the roster is
+imported Ledigt, with the file's spelling, until it's answered. Answers are
+saved (`name_aliases`, `activity_stations`), shown preselected at the next
+import, and changed there; correcting a saved name moves the seats it gave.
+When an import changes nothing, an answer given in Granska is not saved, and
+Granska says so ("Svaret om 'X' sparas inte: inget pass ändras av det.").
+
+The file is checked before it's read: a date that is neither a date, blank
+nor "Datum ej satt …" stops the import with its row; so does an unpacked
+size over 20 MB, more than 100 archive members, or a cell over 200
+characters. Only the first 10 sheets and 30 columns are read.
 
 ### Roster import — `roster.import`
 
@@ -335,6 +386,7 @@ Normative. Where this section and another disagree, this one wins.
   addresses. The one exception is `roster.list` for admins of that team. Logs
   record action, team and change count, never names or addresses. This extends
   the existing no-address rule for mail and Actions logs.
+- **Plan basis:** every plan's digest also covers a hidden basis: the current values of each row its writes touch, and the swaps on them, so a row changed between review and Genomför gives 409 even when Granska's text reads the same. Genomför holds SQLite's write lock (BEGIN IMMEDIATE) from its re-plan to its commit, so the check and the write can't be split by another writer. Only lock errors become 409 "busy".
 - **Plan tokens** are HMAC-signed and short-lived (see *The two doors*), so a
   plan can't be forged or replayed into another team.
 
@@ -350,7 +402,7 @@ The final mockup is the reference. Summary:
 - **Pass:** the team's list in the *Hela laget* style with *Ändra* per shift
   (side panel), *Sätt datum* on undated shifts, and two entries: **+ Lägg till
   pass** (Dagar & pass → Bemanna → Granska) and **Importera Excel** (→
-  Granska).
+  Granska). A shift is one card per date, time, activity and station (and, undated, its note), so two stations at one venue at the same time are two cards. **Ändra** and **Ta bort** carry the shift's seats; each seat's **Ändra spelare** carries only that seat.
 - **Platser:** venues → stations → instruction (✓ linked / ? missing), plus
   uploaded documents not linked anywhere.
 - **Lag & ansvariga:** Ansvariga, Ledare (from 360Player, with exempt
@@ -381,7 +433,7 @@ Each step deploys on its own.
 5. **Retire the old path:** once `schedule.import` has replaced a real
    `schedule-push`, the `just *-push` recipes call the API with the owner's key
    (read from 1Password at call time, never written to disk), and
-   `admin_app.py` is removed.
+   `admin_app.py` is removed. This is plan 3: it waits until a real import has been done with `schedule.import`.
 
 ## Testing
 

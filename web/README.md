@@ -56,6 +56,14 @@ rubriken i listan — `Kiosk_instruktioner.pdf` visas som "Kiosk instruktioner".
 Ansvariga i ett lag och klubbadmin ser en **✎** bredvid ⚙. Den leder till
 arbetsbänken på `/admin/<lag>/`:
 
+- **Pass**: lagets pass plats för plats, och där man börjar. **+ Lägg till pass**
+  för en cup eller ett enstaka pass: välj dagar (eller *Den här helgen*), skriv
+  aktiviteten och upp till fyra rader med tid, station och antal platser.
+  Bocka i lediga platser och tryck **Bemanna valda platser**: den med minst
+  pass den här säsongen går först, syskon hamnar gärna på samma pass, och
+  slumpen avgör bara mellan lika. Ledarnas barn får aldrig pass. **Ändra** och
+  **Ta bort** gäller ett pass i taget. **Importera Excel** tar coachens fil
+  som den är (se nedan).
 - **Lag & ansvariga**: laglistan från 360Player, ledarna och vilka som är
   ansvariga. Varje ansvarig kan göra en annan förälder i laget till ansvarig.
   Bara klubbadmin kan ta bort lagets sista ansvariga.
@@ -75,13 +83,39 @@ Ingenting händer förrän du trycker **Genomför**.
 
 Spelare läses bara från spelarrader. Ledare känns igen automatiskt: i exporten
 står en ledare en gång till, utan barn och utan föräldrar, med samma e-post som
-när hen står som förälder. Ledarnas barn markeras som undantagna; det börjar gälla först när bemanningen
-kommer (plan 2), så ett schemaimport tilldelar dem fortfarande pass. Är någon felaktigt
+när hen står som förälder. Ledarnas barn markeras som undantagna och får aldrig pass när du bemannar. Står
+de i coachens Excel varnar granskningen. Är någon felaktigt
 ledare rättas det i 360Player, inte här. Den som redan finns i ett annat lag
 kopplas till det här laget men byter aldrig namn. Ingen tas bort av en import:
 den som saknas i filen listas som en varning. Telefonnummer läses aldrig in.
 Filen läses i minnet och sparas inte; uppladdningar är begränsade till 2 MB per
 anrop och 1 MB per fil.
+
+### Coachens Excel
+
+✎ → **Pass** → **Importera Excel** → välj coachens bemanningsschema (.xlsx) →
+Granska → Genomför. Filen läses i minnet och sparas inte. Även en seed-fil från
+`just schedule-build` går att importera.
+
+Importen är en ändringslista, inte en ersättning:
+
+- Ett pass som är oförändrat behåller sitt id och sina byten, också byten som
+  redan är gjorda: importen jämför med namnet som stod i schemat, inte med vem
+  som har passet nu.
+- Byter filen namn på en plats ställs väntande byten på den in, och båda
+  familjerna får ett mejl.
+- Ett pass som får sitt datum behåller sina byten.
+- Ett pass som inte längre finns i filen tas bort.
+- Bara aktiviteter som står i filen, och bara säsongerna filen gäller, rörs.
+  Pass före i dag och pass ni lagt till under Pass ändras aldrig.
+
+Står ett namn som inte finns i laglistan frågar granskningen *Vem är 'X'?*;
+utan svar blir passet ledigt med namnet kvar. Har en aktivitet ingen känd plats
+frågar den *Var hålls 'X'?*. Svaren sparas, så nästa import av samma fil frågar
+inget. Ett sparat svar visas förvalt och kan ändras där. En plats som filen
+namnger men som saknas under Platser stoppar importen, liksom ett datum som
+inte är ett datum (skriv *Datum ej satt* för pass utan datum). Det här ersätter `data/name_fixes.json` och
+`just schedule-push`, som finns kvar tills en riktig import har gjorts här.
 
 ### För agenter
 
