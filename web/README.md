@@ -105,12 +105,16 @@ Importen är en ändringslista, inte en ersättning:
 - Byter filen namn på en plats ställs väntande byten på den in, och båda
   familjerna får ett mejl.
 - Ett pass som får sitt datum behåller sina byten.
+- Har du ändrat datum, tid eller station på ett importerat pass under Pass
+  sätter nästa import tillbaka det filen säger. Passet behåller sitt id och
+  sin spelare, men väntande byten ställs in.
 - Ett pass som inte längre finns i filen tas bort.
 - Bara aktiviteter som står i filen, och bara säsongerna filen gäller, rörs.
   Pass före i dag och pass ni lagt till under Pass ändras aldrig.
 
 Står ett namn som inte finns i laglistan frågar granskningen *Vem är 'X'?*;
-utan svar blir passet ledigt med namnet kvar. Har en aktivitet ingen känd plats
+utan svar blir passet ledigt med namnet kvar. Har passet redan en spelare
+behåller det sin spelare tills du svarar. Har en aktivitet ingen känd plats
 frågar den *Var hålls 'X'?*. Svaren sparas när importen genomförs med
 ändringar, så nästa import av samma fil frågar inget. Ett sparat svar visas
 förvalt och kan ändras där. En plats som filen namnger men som saknas under

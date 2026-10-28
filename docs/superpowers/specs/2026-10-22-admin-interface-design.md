@@ -276,11 +276,24 @@ corrects a saved place answer, seats at the previously saved station move to
 the new one (same id, owner kept, pending swaps cancelled) instead of being
 deleted and re-added.
 
+A "held" pass keeps a seat's player when the name isn't known: a row whose
+name nobody has answered yet never empties a seat that has a player. The
+seat on that shift (or the undated seat the row dates) keeps its player and
+its schedule name until the question is answered, and Granska says so ("1
+pass behåller sin spelare tills du svarar vem 'X' är."). The warning that
+seats become Ledigt counts only the seats that really do.
+
+A seat changed under Pass keeps its id: the next import puts the file's
+date, time and station back as an update (owner kept, pending swaps
+cancelled), instead of deleting it and adding it again. This "edited" pass
+runs last, and only pairs a seat with a row for the same person and
+activity, the nearest date first.
+
 What it may touch: activities that appear in the file, in the seasons its
 dated rows fall in (1 August – 31 July), plus undated slots. A slot dated
 before today, or one made under Pass (`slots.origin = 'admin'`), may match
-an identical row but is never changed or removed, and a past row with no
-match isn't added. Granska states this boundary.
+an identical row (or a respelling of it), after every other seat, but is
+never changed or removed, and a past row with no match isn't added. Granska states this boundary.
 
 A changed name cancels that seat's pending swaps (mail to both families
 after commit); a newly dated undated slot keeps its swaps. An activity with
