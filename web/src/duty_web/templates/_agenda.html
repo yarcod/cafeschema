@@ -1,0 +1,63 @@
+{# The parent agenda, one card per shift. Used by Hela laget and by the
+   admin's phone preview, so the preview can't drift from what parents see. #}
+{% from "_names.html" import slot_person %}
+
+{% macro agenda(days, empty="Inga pass denna månad.") %}
+<div class="agenda">
+  {% for day in days %}
+    <div class="day-group" id="dag-{{ day.date.day }}">
+      <div class="day-head">
+        <span class="day-title">{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}</span>
+        <span class="day-count">{{ day.shifts|length }} pass</span>
+      </div>
+      {% for shift in day.shifts %}
+        <div class="shift {{ 'is-first' if shift.is_first }} {{ 'is-last' if shift.is_last }}">
+          <div class="shift-rail" aria-hidden="true"><span class="shift-node"></span></div>
+          <div class="shift-body">
+            <div class="shift-top">
+              <span class="shift-time">{{ shift.start_time.strftime("%H:%M") }}–{{ shift.end_time.strftime("%H:%M") }}</span>
+              <span class="{{ shift.duty_name|chip_class }}">{{ shift.duty_name }}</span>
+            </div>
+            {% if shift.of > 1 %}
+            <div class="shift-order">
+              <span class="shift-count">{{ shift.position }} av {{ shift.of }}</span>
+              {% if shift.is_first %}<span class="shift-role">Först på dagen</span>{% endif %}
+              {% if shift.is_last %}<span class="shift-role">Sist på dagen</span>{% endif %}
+            </div>
+            {% endif %}
+            {% for slot in shift.slots %}
+              <div class="roster-row"><span>{{ slot_person(slot) }}</span></div>
+            {% endfor %}
+            {% if shift.venue %}<div class="shift-venue">{% if shift.station %}{{ shift.station }} · {% endif %}{{ shift.venue }}</div>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty-state">{{ empty }}</p>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro undated(undated_shifts) %}
+  <div class="section-head">
+    <h2>Datum ej satt</h2>
+    <span class="count">{{ undated_shifts|length }} pass</span>
+  </div>
+  <div class="agenda">
+    {% for shift in undated_shifts %}
+      <div class="agenda-day">
+        <div class="title">
+          <span>Datum bestäms senare</span>
+          <span class="{{ shift.duty_name|chip_class }}">{{ shift.duty_name }}</span>
+        </div>
+        <div class="shift-meta">
+          {{ shift.start_time.strftime("%H:%M") }}–{{ shift.end_time.strftime("%H:%M") }}{% if shift.station %} · {{ shift.station }}{% endif %}{% if shift.venue %} · {{ shift.venue }}{% endif %}
+        </div>
+        {% for slot in shift.slots %}
+          <div class="roster-row"><span>{{ slot_person(slot) }}</span></div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+{% endmacro %}

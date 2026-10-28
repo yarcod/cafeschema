@@ -8,6 +8,7 @@ from datetime import date
 from flask import Blueprint, abort, current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
+from ..agenda import group_days, group_shifts
 from ..models import Slot
 from ..roster import teams_for_parent
 from .document_routes import instruction_url_for_slot
@@ -48,56 +49,6 @@ def mine():
         mates_by_slot=mates_by_slot,
         show_team=show_team,
     )
-
-
-def _shifts(slots: list[Slot]) -> list[dict]:
-    """Collapse per-person slot rows into one entry per staffed shift.
-
-    The schedule staffs a single shift with several people, stored as one
-    Slot each so they can be swapped individually; the agenda reads far
-    better as one card per shift listing everyone on it.
-    """
-    shifts: dict[tuple, dict] = {}
-    for slot in sorted(
-        slots,
-        key=lambda s: (s.date or date.max, s.start_time, s.duty_name),
-    ):
-        key = (slot.date, slot.start_time, slot.end_time, slot.duty_name, slot.venue)
-        shift = shifts.setdefault(
-            key,
-            {
-                "date": slot.date,
-                "start_time": slot.start_time,
-                "end_time": slot.end_time,
-                "duty_name": slot.duty_name,
-                "venue": slot.venue,
-                "slots": [],
-            },
-        )
-        shift["slots"].append(slot)
-    return list(shifts.values())
-
-
-def _days(shifts: list[dict]) -> list[dict]:
-    """Group shifts by date, and tell each one where it sits in its day.
-
-    Being first or last on a day carries real duties (opening up, locking
-    after), so position within the day is information the page has to show,
-    not decoration.
-    """
-    days: dict[date, list[dict]] = {}
-    for shift in shifts:
-        days.setdefault(shift["date"], []).append(shift)
-
-    out = []
-    for day, day_shifts in days.items():
-        for index, shift in enumerate(day_shifts, start=1):
-            shift["position"] = index
-            shift["of"] = len(day_shifts)
-            shift["is_first"] = index == 1
-            shift["is_last"] = index == len(day_shifts)
-        out.append({"date": day, "shifts": day_shifts})
-    return out
 
 
 @schedule_bp.route("/team")
@@ -144,9 +95,9 @@ def team():
         "team.html",
         team=current_team,
         teams=teams,
-        days=_days(_shifts(slots)),
+        days=group_days(group_shifts(slots)),
         duties_by_day=duties_by_day,
-        undated_shifts=_shifts(undated_slots),
+        undated_shifts=group_shifts(undated_slots),
         duty_names=duty_names,
         year=year,
         month=month,
