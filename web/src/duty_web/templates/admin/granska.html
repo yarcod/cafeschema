@@ -3,6 +3,8 @@
 {% block content %}
 {% set signs = {"add": "+", "update": "~", "delete": "−"} %}
 <div class="section-head"><h2>Granska: {{ action.title }}</h2></div>
+<div class="granska {{ 'with-phone' if phone }}">
+<div class="granska-diff">
 {% set counts = plan.public()["counts"] %}
 <div class="diff-sum">
   {% if counts.add %}<span class="add">+ {{ counts.add }} nya</span>{% endif %}
@@ -10,6 +12,23 @@
   {% if counts.delete %}<span class="delete">− {{ counts.delete }} borttagna</span>{% endif %}
 </div>
 {% for warning in plan.warnings %}<div class="warn-note">{{ warning }}</div>{% endfor %}
+{% for note in plan.notes %}<div class="notice">{{ note }}</div>{% endfor %}
+{% if plan.questions %}
+<form class="card" method="post" action="{{ url_for('admin.omplanera', slug=ctx.team.slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="plan_token" value="{{ plan_token }}">
+  {% for question in plan.questions %}
+  <label class="field">
+    <span class="field-label">{{ question.label }}</span>
+    <select name="{{ question.field }}" class="admin-input">
+      <option value="">Vet inte än</option>
+      {% for value, label in question.choices %}<option value="{{ value }}" {{ "selected" if question.selected == value }}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+  <button type="submit" class="btn">Uppdatera granskningen</button>
+</form>
+{% endif %}
 {% if plan.changes %}
 <ul class="diff">
   {% for change in plan.changes %}
@@ -29,6 +48,18 @@
 {% endif %}
 <div class="inline-form">
   <a class="btn btn-sm" href="{{ url_for(action.done_endpoint, slug=ctx.team.slug) }}">Avbryt</a>
+  {% if action.reshuffle %}
+  <form class="inline-form" method="post" action="{{ url_for('admin.omplanera', slug=ctx.team.slug) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="plan_token" value="{{ plan_token }}">
+    <button type="submit" name="reshuffle" value="1" class="btn btn-sm">Slumpa om</button>
+  </form>
+  {% endif %}
   <p class="agent-hint">agent → <b>{{ action.name }}</b> med <b>dry_run: true</b> ger samma lista</p>
+</div>
+</div>
+{% if phone %}
+<aside class="phone" aria-label="Så ser föräldrarna det">{{ phone }}</aside>
+{% endif %}
 </div>
 {% endblock %}

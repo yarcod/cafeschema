@@ -38,6 +38,16 @@ class Change:
 class Plan:
     changes: list[Change] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Lines that explain the plan without changing anything (staffing loads,
+    # say). Part of the digest: a different explanation is a different plan.
+    notes: list[str] = field(default_factory=list)
+    # What the writes depend on: the current values of every row they touch
+    # (slot_ops.slot_basis). Hashed, never shown, so a row changed between
+    # review and Genomför gives 409 even when the display text reads the same.
+    basis: list[Any] = field(default_factory=list, repr=False)
+    # Pick lists Granska shows ("Vem är 'Elin'?"). Their facts are already in
+    # warnings, so they stay out of the digest.
+    questions: list[dict[str, Any]] = field(default_factory=list, compare=False)
     writes: list[Callable[[Session], None]] = field(
         default_factory=list, repr=False, compare=False
     )
@@ -45,6 +55,9 @@ class Plan:
     after_commit: list[Callable[[], None]] = field(
         default_factory=list, repr=False, compare=False
     )
+    # The days Granska's phone preview shows. Never public, never in the digest.
+    preview_dates: set = field(default_factory=set, repr=False, compare=False)
+    preview_undated: bool = field(default=False, repr=False, compare=False)
 
     def add(self, op: str, kind: str, summary: str, detail: str = "") -> None:
         if op not in OPS:
@@ -58,14 +71,22 @@ class Plan:
         return {
             "changes": [asdict(c) for c in self.changes],
             "warnings": list(self.warnings),
+            "notes": list(self.notes),
+            "questions": [dict(q) for q in self.questions],
             "counts": counts,
         }
 
     def digest(self) -> str:
         body = json.dumps(
-            {"changes": [asdict(c) for c in self.changes], "warnings": self.warnings},
+            {
+                "changes": [asdict(c) for c in self.changes],
+                "warnings": self.warnings,
+                "notes": self.notes,
+                "basis": self.basis,
+            },
             sort_keys=True,
             ensure_ascii=False,
+            default=str,
         )
         return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
@@ -78,6 +99,14 @@ class Action:
     template: ClassVar[str]
     uploads: ClassVar[tuple[str, ...]] = ()
     done_endpoint: ClassVar[str] = "admin.lag"
+    # Granska can post answers back (who is 'Elin'?) and re-plan with them.
+    refinable: ClassVar[bool] = False
+    # Granska offers "Slumpa om", which re-plans with a new seed.
+    reshuffle: ClassVar[bool] = False
+
+    def refine(self, inp: Any, fields: Mapping[str, Any]) -> Any:
+        """The reviewed input plus Granska's answers (or a new seed)."""
+        raise NotImplementedError
 
     def parse(self, fields: Mapping[str, Any], files: Mapping[str, Any]) -> Any:
         return parse_input(self.Input, fields)

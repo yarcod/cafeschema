@@ -2,7 +2,7 @@
 {% block title %}Inget ändrades{% endblock %}
 {% block content %}
 <div class="magic-sent error">
-  <span class="headline">{% if code in ("stale_plan", "conflict") %}Något har ändrats sedan du granskade{% else %}Granskningen gick inte att läsa{% endif %}</span>
+  <span class="headline">{% if code in ("stale_plan", "conflict", "busy") %}Något har ändrats sedan du granskade{% else %}Granskningen gick inte att läsa{% endif %}</span>
   <span class="detail">Ingenting har ändrats. Gör om steget och granska igen.</span>
 </div>
 <a class="btn btn-sm" href="{{ url_for('admin.lag', slug=ctx.team.slug) }}">Tillbaka till laget</a>

@@ -44,6 +44,12 @@
   </nav>
   {% endif %}
   <main class="bench-main">
+    {% if errors %}
+    <div class="error-summary" role="alert">
+      <p>Rätta det här och försök igen:</p>
+      <ul>{% for key, message in errors|dictsort %}<li>{{ message }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

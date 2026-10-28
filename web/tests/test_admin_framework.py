@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import date
 
 import pytest
 from werkzeug.datastructures import MultiDict
@@ -212,3 +213,161 @@ def test_a_lost_race_is_logged_without_values(session_factory, admins, echo, cap
     assert "Krock vid genomförande: tests.echo" in caplog.text
     assert "UNIQUE" in caplog.text
     assert "@" not in caplog.text and "exempel" not in caplog.text
+
+
+def test_notes_are_public_and_part_of_the_digest():
+    noted, plain = Plan(), Plan()
+    noted.notes.append("Tova Exempel: 1 → 2 pass")
+
+    assert noted.public()["notes"] == ["Tova Exempel: 1 → 2 pass"]
+    assert noted.digest() != plain.digest()
+
+
+def test_the_basis_is_in_the_digest_and_never_public():
+    before, after = Plan(), Plan()
+    before.basis.append([7, None, date(2026, 12, 12), "gammal anteckning"])
+    after.basis.append([7, None, date(2026, 12, 12), "ny anteckning"])
+
+    assert before.digest() != after.digest()
+    assert "basis" not in before.public()
+    assert "gammal anteckning" not in str(before.public())
+
+
+def test_questions_and_preview_days_stay_out_of_the_digest():
+    asking, plain = Plan(), Plan()
+    asking.preview_dates.add(date(2026, 12, 12))
+    asking.questions.append({"field": "name::Elin", "label": "Vem är 'Elin'?", "choices": [[1, "Elin E"]]})
+
+    assert asking.digest() == plain.digest()
+    assert asking.public()["questions"] == [
+        {"field": "name::Elin", "label": "Vem är 'Elin'?", "choices": [[1, "Elin E"]]}
+    ]
+    assert "preview_dates" not in asking.public()
+
+
+def test_a_preview_sees_the_planned_state_and_writes_nothing(session_factory, seeded):
+    from duty_web.admin.executor import preview
+
+    session = session_factory()
+    plan = Plan()
+    plan.preview_dates.add(date(2026, 12, 12))
+    plan.writes.append(lambda s: s.add(Venue(name="Hindås", name_key="hindas")))
+
+    seen = preview(session, plan, lambda s: s.query(Venue).count())
+
+    assert seen == 1
+    assert session.query(Venue).count() == 0
+    assert session_factory().query(Venue).count() == 0
+
+
+def test_a_preview_that_fails_is_left_out(session_factory, seeded, caplog):
+    from duty_web.admin.executor import preview
+
+    plan = Plan()
+    plan.preview_dates.add(date(2026, 12, 12))
+    plan.writes.append(lambda s: 1 / 0)
+
+    assert preview(session_factory(), plan, lambda s: "html") is None
+    assert "ZeroDivisionError" in caplog.text
+
+
+@pytest.mark.parametrize("write", [
+    lambda s: s.add(Venue(name="Hindås", name_key="hindas")),
+    lambda s: 1 / 0,
+])
+def test_a_preview_never_runs_the_after_commit_steps(session_factory, seeded, write):
+    from duty_web.admin.executor import preview
+
+    sent = []
+    plan = Plan()
+    plan.preview_dates.add(date(2026, 12, 12))
+    plan.writes.append(write)
+    plan.after_commit.append(lambda: sent.append("mail"))
+
+    preview(session_factory(), plan, lambda s: "html")
+
+    assert sent == []
+
+
+def test_apply_holds_the_write_lock_while_it_replans(tmp_path, monkeypatch):
+    import sqlite3
+
+    from duty_web.admin.actions import REGISTRY
+    from duty_web.db import init_db, make_engine, make_session_factory
+    from duty_web.models import ClubAdmin, Team
+
+    from .admin_echo import EchoAction, EchoInput
+
+    db = tmp_path / "duty.db"
+    engine = make_engine(str(db))
+    init_db(engine)
+    session = make_session_factory(engine)()
+    team, person = Team(name="F14 Blå", slug="f14-bla", venue="X"), Person(name="K", email="k@exempel.se")
+    session.add_all([team, person])
+    session.flush()
+    session.add(ClubAdmin(person_id=person.id))
+    session.commit()
+    action = EchoAction()
+    monkeypatch.setitem(REGISTRY, action.name, action)
+    ctx = admin_context(session, person, "f14-bla")
+    _, token = dry_run(session, ctx, action, EchoInput(text="Hindås"), secret_key="s")
+    seen = []
+    real = EchoAction.plan
+
+    def planning(self, s, c, i):
+        # Another writer, mid-apply: it must find the database locked.
+        other = sqlite3.connect(db, timeout=0)
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            seen.append("free")
+        except sqlite3.OperationalError:
+            seen.append("locked")
+        finally:
+            other.close()
+        return real(self, s, c, i)
+
+    monkeypatch.setattr(EchoAction, "plan", planning)
+    apply_plan(session, ctx, token, secret_key="s", via="test")
+
+    assert seen == ["locked"]
+    assert make_session_factory(engine)().query(Venue).count() == 1
+
+
+def test_a_busy_database_is_a_conflict_with_nothing_written(
+    session_factory, admins, echo, monkeypatch
+):
+    from sqlalchemy.exc import OperationalError
+
+    from duty_web.admin import executor
+
+    session = session_factory()
+    ctx = admin_context(session, session.get(Person, admins["ansvarig"].id), "f14-bla")
+    plan, token = dry_run(session, ctx, echo, echo.parse({"text": "Hindås", "count": "1"}, {}),
+                          secret_key="test-secret")
+    sent = []
+    monkeypatch.setattr(type(echo), "plan", lambda self, s, c, i: _with_mail(plan, sent))
+
+    def busy(s):
+        raise OperationalError("BEGIN IMMEDIATE", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(executor, "_write_lock", busy)
+
+    with pytest.raises(PlanTokenError) as caught:
+        apply_plan(session, ctx, token, secret_key="test-secret", via="test")
+
+    assert (caught.value.status, caught.value.code) == (409, "busy")
+    assert session_factory().query(Venue).count() == 0 and sent == []
+
+
+def _with_mail(plan, sent):
+    plan.after_commit.append(lambda: sent.append("mail"))
+    return plan
+
+
+def test_no_preview_without_days_to_show(session_factory):
+    from duty_web.admin.executor import preview
+
+    plan = Plan()
+    plan.writes.append(lambda s: s.add(Venue(name="Hindås", name_key="hindas")))
+
+    assert preview(session_factory(), plan, lambda s: "html") is None

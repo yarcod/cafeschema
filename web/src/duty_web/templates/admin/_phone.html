@@ -1,0 +1,5 @@
+{% from "_agenda.html" import agenda, undated %}
+<p class="phone-title">Hela laget, efter ändringen</p>
+{{ agenda(days, empty="Inga pass de här dagarna.") }}
+{% if undated_shifts %}{{ undated(undated_shifts) }}{% endif %}
+{% if more %}<p class="phone-more">+ {{ more }} {{ "dag" if more == 1 else "dagar" }} till</p>{% endif %}

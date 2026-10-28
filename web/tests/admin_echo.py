@@ -7,10 +7,13 @@ so a replayed token re-plans differently and is refused like a real one.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, time
 
 from duty_web.admin.actions.base import Action, Plan, ValidationError
-from duty_web.models import Venue
+from duty_web.models import Slot, Venue
 from duty_web.names import normalize_key
+
+PREVIEW_DAY = date(2026, 12, 12)
 
 ECHO_TEMPLATE = (
     '{% extends "admin/base_admin.html" %}{% block content %}'
@@ -35,6 +38,13 @@ class EchoAction(Action):
     scope = "team"
     Input = EchoInput
     template = "admin/actions/_test_echo.html"
+    refinable = True
+    reshuffle = True
+
+    def refine(self, inp, fields):
+        if fields.get("reshuffle"):
+            return EchoInput(text=inp.text, count=inp.count + 1)
+        return EchoInput(text=fields.get("text") or inp.text, count=inp.count)
 
     def plan(self, session, ctx, inp):
         if not inp.text:
@@ -57,4 +67,11 @@ class EchoAction(Action):
             )
         if text_.startswith("mail"):
             plan.after_commit.append(_mail_fails)
+        if text_.startswith("slot"):
+            team_id = ctx.team.id
+            plan.preview_dates.add(PREVIEW_DAY)
+            plan.writes.append(lambda s: s.add(Slot(
+                team_id=team_id, date=PREVIEW_DAY, start_time=time(9), end_time=time(12),
+                station="Café", duty_name="Eko", venue="Hindås",
+            )))
         return plan

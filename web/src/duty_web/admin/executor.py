@@ -4,8 +4,10 @@ apply_plan re-plans from the token and writes only if nothing changed."""
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import TypeVar
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from .actions import REGISTRY
@@ -15,6 +17,8 @@ from .permissions import AdminContext
 from .plan_tokens import PlanTokenError, read_plan_token, sign_plan
 
 logger = logging.getLogger("duty_web.admin")
+
+T = TypeVar("T")
 
 
 def scope_allows(action: Action, ctx: AdminContext) -> bool:
@@ -36,6 +40,45 @@ def dry_run(
         person_id=ctx.person.id, inp=inp, digest=plan.digest(),
     )
     return plan, token
+
+
+def preview(session: Session, plan: Plan, render: Callable[[Session], T]) -> T | None:
+    """Render the planned state, then forget it.
+
+    Runs the plan's writes on the session and flushes, so queries see them,
+    calls render while they're visible, and always rolls back: nothing is
+    ever committed. Only the HTML door uses it, after dry_run. A preview that
+    fails is left out: it must never stand between a person and Granska.
+    """
+    if not plan.writes or not (plan.preview_dates or plan.preview_undated):
+        return None
+    try:
+        for write in plan.writes:
+            write(session)
+        session.flush()
+        return render(session)
+    except Exception as exc:
+        logger.warning("Förhandsvisningen kunde inte visas (%s)", type(exc).__name__)
+        return None
+    finally:
+        session.rollback()
+
+
+def _write_lock(session: Session) -> None:
+    """Hold SQLite's write lock from the re-plan until the commit.
+
+    pysqlite begins a transaction only at the first INSERT/UPDATE/DELETE, so
+    the re-plan's reads would run outside one and another writer could
+    commit between the digest check and the writes. BEGIN IMMEDIATE takes the
+    lock before anything is read; a competing writer waits (the driver's busy
+    timeout) and plans against what this one committed.
+    """
+    session.commit()  # whatever the request did before: BEGIN can't nest
+    connection = session.connection()
+    # In tests every session shares one in-memory connection (StaticPool),
+    # which may already be inside a transaction; there's no other writer then.
+    if not connection.connection.dbapi_connection.in_transaction:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def apply_plan(
@@ -69,6 +112,11 @@ def apply_plan(
         raise PlanTokenError(400, "tampered_plan") from exc
 
     try:
+        _write_lock(session)
+    except OperationalError as exc:
+        session.rollback()
+        raise PlanTokenError(409, "busy") from exc
+    try:
         plan = action.plan(session, ctx, inp)
     except (ValidationError, NearDuplicate) as exc:
         # Valid when reviewed, invalid now: something changed in between.
@@ -88,6 +136,11 @@ def apply_plan(
         # name tells a real bug apart from a lost race.
         logger.warning("Krock vid genomförande: %s (%s)", action.name, exc.orig)
         raise PlanTokenError(409, "conflict") from exc
+    except OperationalError as exc:
+        # Locked out at commit: nothing was written, so nothing is mailed.
+        session.rollback()
+        logger.warning("Upptagen databas vid genomförande: %s", action.name)
+        raise PlanTokenError(409, "busy") from exc
     except Exception:
         session.rollback()
         raise

@@ -3,7 +3,7 @@
 import re
 
 from duty_web.admin.ratelimit import RateLimiter
-from duty_web.models import Venue
+from duty_web.models import Slot, Venue
 
 from .conftest import login
 
@@ -154,3 +154,100 @@ def test_the_limiter_forgets_old_hits():
 
     assert [limiter.allow("k", now=t) for t in (0, 1, 2)] == [True, True, False]
     assert limiter.allow("k", now=61) is True
+
+
+def test_granska_shows_the_phone_after_the_change_and_writes_nothing(
+    client, admins, echo, csrf_token, session_factory
+):
+    login(client, admins["ansvarig"])
+
+    page = client.post(
+        "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "slot"}
+    ).get_data(as_text=True)
+
+    assert 'class="phone"' in page and "09:00–12:00" in page and "Eko" in page
+    assert session_factory().query(Slot).filter_by(duty_name="Eko").count() == 0
+
+
+def test_granska_without_days_has_no_phone(client, admins, echo, csrf_token):
+    login(client, admins["ansvarig"])
+
+    page = client.post(
+        "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "a"}
+    ).get_data(as_text=True)
+
+    assert 'class="phone"' not in page
+
+
+def test_granska_answers_replan_the_reviewed_input(client, admins, echo, csrf_token):
+    login(client, admins["ansvarig"])
+    first = client.post(
+        "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "a"}
+    ).get_data(as_text=True)
+
+    response = client.post("/admin/f14-bla/omplanera", data={
+        "csrf_token": csrf_token(), "plan_token": _token(first), "text": "b",
+    })
+
+    assert response.status_code == 200
+    assert "b 0" in response.get_data(as_text=True)
+
+
+def test_slumpa_om_replans(client, admins, echo, csrf_token):
+    login(client, admins["ansvarig"])
+    first = client.post(
+        "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "a"}
+    ).get_data(as_text=True)
+    assert "Slumpa om" in first
+
+    page = client.post("/admin/f14-bla/omplanera", data={
+        "csrf_token": csrf_token(), "plan_token": _token(first), "reshuffle": "1",
+    }).get_data(as_text=True)
+
+    assert "a 1" in page
+
+
+def test_an_error_without_a_field_still_shows(client, admins, echo, csrf_token, monkeypatch):
+    from duty_web.admin.errors import ValidationError
+
+    def refuse(self, session, ctx, inp):
+        raise ValidationError({"rows[3].start": "Rad 5: ogiltig tid"})
+
+    monkeypatch.setattr(type(echo), "plan", refuse)
+    login(client, admins["ansvarig"])
+
+    response = _review(client, csrf_token)
+
+    assert response.status_code == 400
+    assert 'class="error-summary"' in response.get_data(as_text=True)
+    assert "Rad 5: ogiltig tid" in response.get_data(as_text=True)
+
+
+def test_omplanera_refuses_someone_elses_token(client, admins, echo, csrf_token):
+    login(client, admins["ansvarig"])
+    first = client.post(
+        "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "a"}
+    ).get_data(as_text=True)
+    login(client, admins["club"])
+
+    response = client.post("/admin/f14-bla/omplanera", data={
+        "csrf_token": csrf_token(), "plan_token": _token(first), "text": "b",
+    })
+
+    assert response.status_code == 404
+
+
+def test_omplanera_is_404_for_an_action_without_questions(
+    client, admins, echo, csrf_token, monkeypatch
+):
+    login(client, admins["ansvarig"])
+    first = client.post(
+        "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "a"}
+    ).get_data(as_text=True)
+    monkeypatch.setattr(type(echo), "refinable", False)
+
+    response = client.post("/admin/f14-bla/omplanera", data={
+        "csrf_token": csrf_token(), "plan_token": _token(first), "text": "b",
+    })
+
+    assert response.status_code == 404
