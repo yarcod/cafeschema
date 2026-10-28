@@ -194,3 +194,22 @@ def test_an_overlong_cell_is_refused_with_its_row():
 
     with pytest.raises(ScheduleFileError, match="Rad 4: för lång text"):
         read_schedule(data)
+
+
+
+def test_a_corrupt_compressed_sheet_is_refused_as_unreadable():
+    """Any damage inside a member's deflate stream is "unreadable", never a crash."""
+    base = bytearray(coach_workbook([[46, "Cafépass", datetime(2026, 11, 14), "Fre 18-21", "Tova Exempel", None, None]]))
+    with zipfile.ZipFile(BytesIO(bytes(base))) as archive:
+        info = archive.getinfo("xl/worksheets/sheet1.xml")
+    # Local file header: 30 fixed bytes, then the name and extra field.
+    header = info.header_offset
+    start = header + 30 + int.from_bytes(base[header + 26:header + 28], "little") + int.from_bytes(base[header + 28:header + 30], "little")
+
+    for position in range(start, start + info.compress_size):
+        data = bytearray(base)
+        data[position] ^= 0xFF   # sizes stay the same, so _check_archive still passes
+        try:
+            read_schedule(bytes(data))
+        except ScheduleFileError as error:
+            assert "Excel" in str(error)

@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import itertools
 import re
+import warnings
 import zipfile
 from datetime import date, datetime
 from io import BytesIO
 
 from openpyxl import load_workbook
-from openpyxl.utils.exceptions import InvalidFileException
 
 from .duties import canonical_duty_name
 
@@ -197,20 +197,27 @@ def read_schedule(data: bytes) -> list[dict]:
     if len(data) > MAX_BYTES:
         raise ScheduleFileError("Filen är för stor (högst 1 MB).")
     _check_archive(data)
-    try:
-        workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
-    except (zipfile.BadZipFile, InvalidFileException, KeyError, ValueError, OSError, SyntaxError):
-        raise ScheduleFileError(UNREADABLE) from None
-    try:
-        return _read_sheets(workbook)
-    except ScheduleFileError:
-        raise
-    except (zipfile.BadZipFile, KeyError, ValueError, OSError, SyntaxError, TypeError):
-        # A sheet is parsed as it's iterated, so broken XML (ParseError is a
-        # SyntaxError) or a member that lied about its size surfaces here.
-        raise ScheduleFileError(UNREADABLE) from None
-    finally:
-        workbook.close()
+    # The file is untrusted, so the exception types a damaged archive can raise
+    # (zlib, EOF, XML, openpyxl's own) are not enumerated: any failure while
+    # reading it means "unreadable". Warnings from crafted files are silenced
+    # so they neither reach the logs nor the test output.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
+        except ScheduleFileError:
+            raise
+        except Exception:
+            raise ScheduleFileError(UNREADABLE) from None
+        try:
+            return _read_sheets(workbook)
+        except ScheduleFileError:
+            raise
+        except Exception:
+            # A sheet is parsed as it's iterated, so the damage can surface here.
+            raise ScheduleFileError(UNREADABLE) from None
+        finally:
+            workbook.close()
 
 
 def _read_sheets(workbook) -> list[dict]:
