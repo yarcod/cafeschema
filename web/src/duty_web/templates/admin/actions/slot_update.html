@@ -1,0 +1,57 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Ändra pass{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Ändra pass</h2></div>
+<form class="card" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if errors.get("slot_ids") %}<span class="field-error">{{ errors["slot_ids"] }}</span>{% endif %}
+  <ul class="seat-list">
+    {% for seat in seats %}
+    <li><input type="hidden" name="slot_ids" value="{{ seat.id }}">{{ seat.label }} · {{ seat.owner }}</li>
+    {% else %}
+    <li class="empty-state">Välj ett pass under Pass först.</li>
+    {% endfor %}
+  </ul>
+  <div class="inline-form">
+    <label class="field"><span class="field-label">Datum</span>
+      <input type="date" name="day" class="admin-input" value="{{ form.get('day', current.get('day', '')) }}"></label>
+    <label class="field"><span class="field-label">Start</span>
+      <input name="start" class="admin-input time" value="{{ form.get('start', current.get('start', '')) }}"></label>
+    <label class="field"><span class="field-label">Slut</span>
+      <input name="end" class="admin-input time" value="{{ form.get('end', current.get('end', '')) }}"></label>
+  </div>
+  {% for key in ("day", "start", "end") %}
+    {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
+  {% endfor %}
+  <label class="field">
+    <span class="field-label">Station</span>
+    <select name="station_id" class="admin-input">
+      <option value="">Oförändrad</option>
+      {% for value, label in stations %}
+      <option value="{{ value }}" {{ "selected" if form.get('station_id', current.get('station_id')) == value|string }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if errors.get("station_id") %}<span class="field-error">{{ errors["station_id"] }}</span>{% endif %}
+  </label>
+  {% if single %}
+  <label class="field">
+    <span class="field-label">Vem</span>
+    <select name="player_id" class="admin-input">
+      <option value="">Oförändrat</option>
+      {% for value, label in players %}
+      <option value="{{ value }}" {{ "selected" if form.get('player_id', current.get('player_id')) == value|string }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label><input type="checkbox" name="clear_player" value="1"> Gör platsen ledig</label>
+  {% if errors.get("player_id") %}<span class="field-error">{{ errors["player_id"] }}</span>{% endif %}
+  {% endif %}
+  <label class="field">
+    <span class="field-label">Anteckning</span>
+    <input name="note" class="admin-input" value="{{ form.get('note', current.get('note', '')) }}">
+  </label>
+  <button type="submit" class="btn btn-primary">Granska</button>
+  <p class="hint">Ett nytt datum, en ny tid, station eller spelare ställer in väntande byten på passet. Båda familjerna får ett mejl.</p>
+  <p class="agent-hint">agent → <b>slot.update</b> med <b>slot_ids</b> och det som ska ändras</p>
+</form>
+{% endblock %}

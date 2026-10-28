@@ -1,0 +1,19 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Ta bort pass{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Ta bort pass</h2></div>
+<form class="card" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if errors.get("slot_ids") %}<span class="field-error">{{ errors["slot_ids"] }}</span>{% endif %}
+  <ul class="seat-list">
+    {% for seat in seats %}
+    <li><input type="hidden" name="slot_ids" value="{{ seat.id }}">{{ seat.label }} · {{ seat.owner }}</li>
+    {% else %}
+    <li class="empty-state">Välj ett pass under Pass först.</li>
+    {% endfor %}
+  </ul>
+  <button type="submit" class="btn btn-primary">Granska borttagningen</button>
+  <p class="hint">Väntande byten på passet ställs in, och båda familjerna får ett mejl.</p>
+  <p class="agent-hint">agent → <b>slot.delete</b> med <b>slot_ids</b></p>
+</form>
+{% endblock %}
