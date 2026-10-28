@@ -202,7 +202,8 @@ warnings)`.
 Input: `team, days[], activity, rows[{start, end, station_id, seats, on_days[]}]`.
 Creates one `Slot` per seat, unassigned. Validates end after start and that the
 station exists. Warns (doesn't block) when the team already has an overlapping
-shift at the same station. The UI picks days with two date fields and shortcuts (*Den här helgen*,
+shift at the same station. The UI picks days with two date fields and shortcuts
+(*Den här helgen*,
 *Nästa helg*, *I dag*), and each row can be limited to some weekdays. A JS
 range picker can be added later on top of the same form.
 
@@ -241,7 +242,8 @@ refused, and an all-undated selection carries its season in the plan token.
 Replaces today's delete-and-reinsert `import_schedule` with a diff. The
 coach's file is translated in-app (the logic of `scripts/build_seed_xlsx.py`
 moves into `duty_web`). Each row is matched against existing slots on
-*(date, start, end, activity, station, name)*, where the name is the one the schedule gave the seat (`slots.child_name`), never its current owner:
+*(date, start, end, activity, station, name)*, where the name is the one the
+schedule gave the seat (`slots.child_name`), never its current owner:
 
 - identical key → unchanged; the slot keeps its id and its swaps;
 - same date, time, activity and station, different name → `update`;
@@ -386,7 +388,12 @@ Normative. Where this section and another disagree, this one wins.
   addresses. The one exception is `roster.list` for admins of that team. Logs
   record action, team and change count, never names or addresses. This extends
   the existing no-address rule for mail and Actions logs.
-- **Plan basis:** every plan's digest also covers a hidden basis: the current values of each row its writes touch, and the swaps on them, so a row changed between review and Genomför gives 409 even when Granska's text reads the same. Genomför holds SQLite's write lock (BEGIN IMMEDIATE) from its re-plan to its commit, so the check and the write can't be split by another writer. Only lock errors become 409 "busy".
+- **Plan basis:** every plan's digest also covers a hidden basis: the current
+  values of each row its writes touch, and the swaps on them, so a row changed
+  between review and Genomför gives 409 even when Granska's text reads the same.
+  Genomför holds SQLite's write lock (BEGIN IMMEDIATE) from its re-plan to its
+  commit, so the check and the write can't be split by another writer. Only lock
+  errors become 409 "busy".
 - **Plan tokens** are HMAC-signed and short-lived (see *The two doors*), so a
   plan can't be forged or replayed into another team.
 
@@ -402,7 +409,10 @@ The final mockup is the reference. Summary:
 - **Pass:** the team's list in the *Hela laget* style with *Ändra* per shift
   (side panel), *Sätt datum* on undated shifts, and two entries: **+ Lägg till
   pass** (Dagar & pass → Bemanna → Granska) and **Importera Excel** (→
-  Granska). A shift is one card per date, time, activity and station (and, undated, its note), so two stations at one venue at the same time are two cards. **Ändra** and **Ta bort** carry the shift's seats; each seat's **Ändra spelare** carries only that seat.
+  Granska). A shift is one card per date, time, activity and station (and,
+  undated, its note), so two stations at one venue at the same time are two
+  cards. **Ändra** and **Ta bort** carry the shift's seats; each seat's **Ändra
+  spelare** carries only that seat.
 - **Platser:** venues → stations → instruction (✓ linked / ? missing), plus
   uploaded documents not linked anywhere.
 - **Lag & ansvariga:** Ansvariga, Ledare (from 360Player, with exempt
@@ -433,7 +443,8 @@ Each step deploys on its own.
 5. **Retire the old path:** once `schedule.import` has replaced a real
    `schedule-push`, the `just *-push` recipes call the API with the owner's key
    (read from 1Password at call time, never written to disk), and
-   `admin_app.py` is removed. This is plan 3: it waits until a real import has been done with `schedule.import`.
+   `admin_app.py` is removed. This is plan 3: it waits until a real import has
+   been done with `schedule.import`.
 
 ## Testing
 

@@ -83,9 +83,9 @@ Ingenting händer förrän du trycker **Genomför**.
 
 Spelare läses bara från spelarrader. Ledare känns igen automatiskt: i exporten
 står en ledare en gång till, utan barn och utan föräldrar, med samma e-post som
-när hen står som förälder. Ledarnas barn markeras som undantagna och får aldrig pass när du bemannar. Står
-de i coachens Excel varnar granskningen. Är någon felaktigt
-ledare rättas det i 360Player, inte här. Den som redan finns i ett annat lag
+när hen står som förälder. Ledarnas barn markeras som undantagna och får
+aldrig pass när du bemannar. Står de i coachens Excel varnar granskningen. Är
+någon felaktigt ledare rättas det i 360Player, inte här. Den som redan finns i ett annat lag
 kopplas till det här laget men byter aldrig namn. Ingen tas bort av en import:
 den som saknas i filen listas som en varning. Telefonnummer läses aldrig in.
 Filen läses i minnet och sparas inte; uppladdningar är begränsade till 2 MB per
@@ -94,8 +94,8 @@ anrop och 1 MB per fil.
 ### Coachens Excel
 
 ✎ → **Pass** → **Importera Excel** → välj coachens bemanningsschema (.xlsx) →
-Granska → Genomför. Filen läses i minnet och sparas inte. Även en seed-fil från
-`just schedule-build` går att importera.
+Granska → Genomför. Filen läses i minnet och sparas inte. Även en seed-fil
+från `just schedule-build` går att importera.
 
 Importen är en ändringslista, inte en ersättning:
 
@@ -111,10 +111,11 @@ Importen är en ändringslista, inte en ersättning:
 
 Står ett namn som inte finns i laglistan frågar granskningen *Vem är 'X'?*;
 utan svar blir passet ledigt med namnet kvar. Har en aktivitet ingen känd plats
-frågar den *Var hålls 'X'?*. Svaren sparas, så nästa import av samma fil frågar
-inget. Ett sparat svar visas förvalt och kan ändras där. En plats som filen
-namnger men som saknas under Platser stoppar importen, liksom ett datum som
-inte är ett datum (skriv *Datum ej satt* för pass utan datum). Det här ersätter `data/name_fixes.json` och
+frågar den *Var hålls 'X'?*. Svaren sparas när importen genomförs med
+ändringar, så nästa import av samma fil frågar inget. Ett sparat svar visas
+förvalt och kan ändras där. En plats som filen namnger men som saknas under
+Platser stoppar importen, liksom ett datum som inte är ett datum (skriv *Datum
+ej satt* för pass utan datum). Det här ersätter `data/name_fixes.json` och
 `just schedule-push`, som finns kvar tills en riktig import har gjorts här.
 
 ### För agenter
@@ -141,8 +142,10 @@ curl -X POST -H "Authorization: Bearer $NYCKEL" -F team=f15 -F file=@F15-members
   https://innebandy.edholm.cc/admin/api/roster.import
 ```
 
-Läsning: `GET /admin/api/roster?team=f15`, `GET /admin/api/venues`,
-`GET /admin/api/documents`.
+Läsning: `GET /admin/api/slots?team=f15` (valfritt `from`/`to`),
+`GET /admin/api/roster?team=f15`, `GET /admin/api/venues`, `GET /admin/api/documents`.
+Bemanna kräver inget `seed`: utelämnat väljs ett, och `plan_token` bär det, så
+det som genomförs är det som granskades.
 
 ### Migrering
 
