@@ -84,6 +84,9 @@ def apply_plan(
     except IntegrityError as exc:
         # Someone else wrote the same name between our plan and our commit.
         session.rollback()
+        # Values are hidden by the engine (hide_parameters); the constraint
+        # name tells a real bug apart from a lost race.
+        logger.warning("Krock vid genomförande: %s (%s)", action.name, exc.orig)
         raise PlanTokenError(409, "conflict") from exc
     except Exception:
         session.rollback()

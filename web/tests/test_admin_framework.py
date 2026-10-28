@@ -198,3 +198,17 @@ def test_database_errors_carry_no_bound_parameters(session_factory):
     with pytest.raises(IntegrityError) as caught:
         session.flush()
     assert "exempel" not in str(caught.value) and "@" not in str(caught.value)
+
+
+def test_a_lost_race_is_logged_without_values(session_factory, admins, echo, caplog):
+    session = session_factory()
+    ctx = _ctx(session, admins["ansvarig"], "f14-bla")
+    _, token = dry_run(session, ctx, echo, EchoInput("race@exempel.se"), secret_key=SECRET)
+
+    with caplog.at_level(logging.WARNING, logger="duty_web.admin"):
+        with pytest.raises(PlanTokenError):
+            apply_plan(session, ctx, token, secret_key=SECRET, via="webb")
+
+    assert "Krock vid genomförande: tests.echo" in caplog.text
+    assert "UNIQUE" in caplog.text
+    assert "@" not in caplog.text and "exempel" not in caplog.text

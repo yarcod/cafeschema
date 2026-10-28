@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import re
 
+# The shape create_api_key makes: cs_ + token_hex(4) + _ + token_urlsafe(32).
+# No nested quantifiers, so matching stays linear on any input.
 KEY_PATTERN = re.compile(r"cs_[0-9a-f]{8}_[A-Za-z0-9_-]+")
 
 
@@ -16,7 +18,12 @@ class KeyRedactor(logging.Filter):
     """Werkzeug's access log prints the request line, query string included."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(record.getMessage())
+        try:
+            message = record.getMessage()
+        except Exception:
+            # A malformed record must still be redacted, never raise into the request.
+            message = str(record.msg)
+        record.msg = redact(message)
         record.args = None
         return True
 
