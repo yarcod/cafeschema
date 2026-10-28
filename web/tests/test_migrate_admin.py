@@ -49,7 +49,7 @@ def test_the_new_columns_are_added(tmp_path):
 
     report = migrate(path)
 
-    assert set(report.columns_added) == {"slots.station_id", "players.exempt"}
+    assert set(report.columns_added) == {"slots.station_id", "slots.origin", "players.exempt"}
     assert _session(path).get(Player, 7).exempt is False
 
 
@@ -170,5 +170,13 @@ def test_a_database_with_station_id_but_no_stations_table_migrates(tmp_path):
 
     report = migrate(path)
 
-    assert report.columns_added == ["players.exempt"]
+    assert report.columns_added == ["slots.origin", "players.exempt"]
     assert report.slots_linked == 3
+
+
+def test_every_existing_slot_came_from_an_import(tmp_path):
+    path = _pre_admin_db(tmp_path)
+
+    migrate(path)
+
+    assert {slot.origin for slot in _session(path).query(Slot)} == {"import"}

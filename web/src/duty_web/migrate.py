@@ -32,10 +32,11 @@ from .models import Slot, Station
 from .names import normalize_key
 from .places import find_or_create_station, link_unlinked_slots
 
-NEW_COLUMNS = {
-    "slots": ("station_id", "INTEGER REFERENCES stations (id)"),
-    "players": ("exempt", "BOOLEAN NOT NULL DEFAULT 0"),
-}
+NEW_COLUMNS = [
+    ("slots", "station_id", "INTEGER REFERENCES stations (id)"),
+    ("slots", "origin", "VARCHAR NOT NULL DEFAULT 'import'"),
+    ("players", "exempt", "BOOLEAN NOT NULL DEFAULT 0"),
+]
 
 
 @dataclass
@@ -49,7 +50,7 @@ class MigrationReport:
 def _add_missing_columns(engine: Engine) -> list[str]:
     added = []
     with engine.begin() as connection:
-        for table, (column, ddl) in NEW_COLUMNS.items():
+        for table, column, ddl in NEW_COLUMNS:
             existing = {
                 row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({table})")
             }

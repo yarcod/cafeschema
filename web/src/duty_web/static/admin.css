@@ -102,3 +102,9 @@ body.admin-body { padding-block: 24px; }
 .pass-place { font-size: 11.5px; color: var(--ink-dim); font-weight: 700; }
 .pass-seat { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; font-weight: 600; }
 .seat-open { color: var(--warm); font-weight: 800; }
+
+/* Lägg till pass: one fieldset per shift row */
+.shift-row { border: 1.5px dashed var(--line); border-radius: 12px; padding: 10px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.admin-input.time { width: 6.5em; }
+.admin-input.seats { width: 4.5em; }
+.weekdays label { font-size: 12px; font-weight: 700; }

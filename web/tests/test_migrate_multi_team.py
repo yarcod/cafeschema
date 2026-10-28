@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from duty_web.db import make_engine, make_session_factory
+from duty_web.migrate import migrate
 from duty_web.models import Player, Slot, SwapRequest, Team
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "migrate_multi_team.py"
@@ -74,6 +75,8 @@ def test_the_existing_team_gets_the_given_slug(migration, old_db):
 
 def test_ids_parents_slots_and_pending_swaps_survive(migration, old_db):
     migration.main(["x", str(old_db), "f15"])
+    # The entrypoint runs the admin migration right after this one.
+    migrate(str(old_db))
     session = _session(old_db)
 
     assert [p.email for p in session.get(Player, 7).parents] == ["dan@exempel.se"]

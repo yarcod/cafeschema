@@ -76,6 +76,12 @@ class Player(Base):
     )
 
 
+# Where a slot came from. The coach's file owns "import" slots; a shift made
+# under Pass is "admin", and schedule.import never deletes or moves it.
+ORIGIN_IMPORT = "import"
+ORIGIN_ADMIN = "admin"
+
+
 class Slot(Base):
     __tablename__ = "slots"
 
@@ -109,6 +115,7 @@ class Slot(Base):
     station_id: Mapped[int | None] = mapped_column(
         ForeignKey("stations.id"), default=None
     )
+    origin: Mapped[str] = mapped_column(default=ORIGIN_IMPORT, server_default=ORIGIN_IMPORT)
 
     team: Mapped[Team] = relationship()
     player: Mapped[Player | None] = relationship()

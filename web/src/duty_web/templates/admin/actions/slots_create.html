@@ -1,0 +1,65 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Lägg till pass{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Lägg till pass</h2></div>
+<form class="card" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card-head">
+    <h3>Dagar</h3>
+    <span class="inline-form">
+      {% for label, start, end in shortcuts %}
+      <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name, date_from=start, date_to=end, activity=form.get('activity', '')) }}">{{ label }}</a>
+      {% endfor %}
+    </span>
+  </div>
+  <div class="inline-form">
+    <label class="field"><span class="field-label">Från</span>
+      <input type="date" name="date_from" class="admin-input" value="{{ form.get('date_from', '') }}"></label>
+    <label class="field"><span class="field-label">Till</span>
+      <input type="date" name="date_to" class="admin-input" value="{{ form.get('date_to', '') }}"></label>
+  </div>
+  {% for key in ("days", "date_from", "date_to") %}
+    {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
+  {% endfor %}
+  <label class="field">
+    <span class="field-label">Aktivitet</span>
+    <input name="activity" class="admin-input" list="activities" value="{{ form.get('activity', '') }}" placeholder="t.ex. Bästkustcupen">
+    <datalist id="activities">{% for name in activities %}<option value="{{ name }}">{% endfor %}</datalist>
+    {% if errors.get("activity") %}<span class="field-error">{{ errors["activity"] }}</span>{% endif %}
+  </label>
+  <div class="card-head">
+    <h3>Pass</h3>
+    <span class="hint">Tomma rader hoppas över. Utan valda veckodagar gäller raden alla dagar.</span>
+  </div>
+  {% if errors.get("rows") %}<span class="field-error">{{ errors["rows"] }}</span>{% endif %}
+  {% for i in range(form_rows) %}
+  <fieldset class="shift-row">
+    <legend class="field-label">Pass {{ i + 1 }}</legend>
+    <div class="inline-form">
+      <input name="row-{{ i }}-start" class="admin-input time" placeholder="09:00" value="{{ form.get('row-%d-start' % i, '') }}" aria-label="Start">
+      <span>–</span>
+      <input name="row-{{ i }}-end" class="admin-input time" placeholder="12:00" value="{{ form.get('row-%d-end' % i, '') }}" aria-label="Slut">
+      <select name="row-{{ i }}-station_id" class="admin-input" aria-label="Station">
+        <option value="">Station…</option>
+        {% for value, label in stations %}
+        <option value="{{ value }}" {{ "selected" if form.get('row-%d-station_id' % i) == value|string }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input name="row-{{ i }}-seats" class="admin-input seats" type="number" min="1" max="10" value="{{ form.get('row-%d-seats' % i, '2') }}" aria-label="Platser">
+      <span class="hint">platser</span>
+    </div>
+    <div class="inline-form weekdays">
+      {% for key in weekdays %}
+      <label><input type="checkbox" name="row-{{ i }}-on_days" value="{{ key }}" {{ "checked" if key in form.getlist('row-%d-on_days' % i) }}> {{ key }}</label>
+      {% endfor %}
+    </div>
+    {% for part in ("start", "end", "station_id", "seats", "on_days") %}
+      {% set key = "rows[%d].%s" % (i, part) %}
+      {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Granska</button>
+  <p class="agent-hint">agent → <b>slots.create</b> med <b>days</b> (eller <b>date_from</b>/<b>date_to</b>), <b>activity</b> och <b>rows</b></p>
+</form>
+{% endblock %}
