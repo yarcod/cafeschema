@@ -219,3 +219,42 @@ class ApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(default=None)
 
     person: Mapped[Person] = relationship()
+
+
+class NameAlias(Base):
+    """A spelling in the coach's file that means one of the team's players.
+
+    Saved when an ansvarig answers "Vem är 'Elin Exempel'?" in Granska, so
+    the next import of the same file neither asks again nor leaves her seats
+    free. spelling_key is roster.normalize_name(spelling).
+    """
+
+    __tablename__ = "name_aliases"
+    __table_args__ = (UniqueConstraint("team_id", "spelling_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    spelling_key: Mapped[str]
+    spelling: Mapped[str]
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"))
+
+
+class ActivityStation(Base):
+    """Where a team's activity without a duty profile is held.
+
+    Saved when an ansvarig answers "Var hålls 'X'?" in Granska, so the next
+    import puts those shifts at the same station instead of asking again
+    (and replacing them with unplaced copies). activity_key is
+    names.normalize_key(activity).
+    """
+
+    __tablename__ = "activity_stations"
+    __table_args__ = (UniqueConstraint("team_id", "activity_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    activity_key: Mapped[str]
+    activity: Mapped[str]
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"))
+
+    station: Mapped[Station] = relationship()

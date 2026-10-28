@@ -180,3 +180,12 @@ def test_every_existing_slot_came_from_an_import(tmp_path):
     migrate(path)
 
     assert {slot.origin for slot in _session(path).query(Slot)} == {"import"}
+
+
+def test_the_import_answer_tables_exist(tmp_path):
+    path = _pre_admin_db(tmp_path)
+
+    migrate(path)
+
+    tables = {row[0] for row in sqlite3.connect(path).execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"name_aliases", "activity_stations"} <= tables

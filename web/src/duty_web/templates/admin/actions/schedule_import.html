@@ -1,0 +1,17 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Importera Excel{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Importera Excel</h2></div>
+<form class="card" method="post" enctype="multipart/form-data" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <ol class="hint" style="padding-left:18px;line-height:1.7">
+    <li>Välj coachens bemanningsschema (.xlsx), som det är. Ingenting ändras förrän du har granskat.</li>
+    <li>Ett pass som är oförändrat behåller sina byten, också byten som redan är gjorda. Pass före i dag, pass ni lagt till här, andra säsonger och aktiviteter som inte finns i filen lämnas orörda.</li>
+    <li>Står ett namn eller en aktivitet som appen inte känner igen frågar granskningen vem eller var det är. Svaret sparas till nästa import.</li>
+  </ol>
+  <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="admin-input" required>
+  {% if errors.get("file") %}<span class="field-error">{{ errors["file"] }}</span>{% endif %}
+  <button type="submit" class="btn btn-primary">Granska</button>
+  <p class="agent-hint">agent → <b>schedule.import</b> med filen som <b>file</b>, eller raderna som <b>rows</b>; svar som <b>names</b> och <b>stations</b></p>
+</form>
+{% endblock %}
