@@ -517,6 +517,77 @@ def test_an_answered_place_is_saved_and_the_same_file_then_changes_nothing(
     assert session_factory().get(Slot, seat).station_id == arena
 
 
+def test_correcting_a_saved_place_moves_the_seat_and_cancels_its_pending_swap(
+    app, session_factory, admins, seeded, second_team, arena, mails
+):
+    from duty_web.swaps import accept_swap, propose_swap
+
+    session = session_factory()
+    kiosk = find_or_create_station(session, "Hindås", "Kiosken").id
+    session.commit()
+    rows = _rows([46, "Städning", SATURDAY, "9-12", "Tova Exempel", None, None])
+    _run(app, session_factory, admins["ansvarig"], rows, stations={"Städning": arena})
+    (seat,) = [s.id for s in session_factory().query(Slot).filter_by(duty_name="Städning")]
+    session = session_factory()
+    accepted = propose_swap(session, proposer_slot_id=seat, target_slot_id=second_team["neighbour_slot"].id,
+                            proposer_person_id=seeded["person"].id, now=utcnow())
+    maja = session.query(Person).filter_by(email="maja@exempel.se").one()
+    accept_swap(session, accepted.id, accepting_person_id=maja.id, now=utcnow())
+    accepted = accepted.id
+    moa = second_team["neighbour_slot"].player_id
+    pending = _swap(session_factory, seat, seeded["future_slot"].id)
+
+    plan = _run(app, session_factory, admins["ansvarig"], rows, stations={"Städning": kiosk})
+
+    assert [(c.op, c.detail) for c in plan.changes] == [
+        ("update", "station Café Arena B, nedre plan → Kiosken")
+    ]
+    assert any("ställs in" in w for w in plan.warnings)
+    session = session_factory()
+    slot = session.get(Slot, seat)
+    assert (slot.player_id, slot.child_name, slot.station_id, slot.venue, slot.station) == (
+        moa, "Tova Exempel", kiosk, "Hindås", "Kiosken"
+    )
+    assert (session.get(SwapRequest, pending).status, session.get(SwapRequest, accepted).status) == (
+        "cancelled", "accepted"
+    )
+    assert session.query(ActivityStation).one().station_id == kiosk
+    assert len(mails) == 2
+
+
+def test_an_answer_that_changes_no_seat_says_it_is_not_saved(
+    app, session_factory, admins, seeded, second_team, arena
+):
+    ida = _ida(session_factory, seeded)
+    moa = second_team["neighbour_slot"].player_id
+    rows = _rows([46, "Cafépass", SATURDAY, "11:30-16:00", "Elin Exempel", None, None])
+    _run(app, session_factory, admins["ansvarig"], rows, names={"Elin Exempel": ida})
+    (seat,) = [s.id for s in session_factory().query(Slot).filter_by(duty_name="Cafépass")]
+    session = session_factory()
+    # A swap gave the seat to Tova since: a corrected answer leaves it with her.
+    session.get(Slot, seat).player_id = seeded["player"].id
+    session.commit()
+
+    plan = _run(app, session_factory, admins["ansvarig"], rows, names={"Elin Exempel": moa}, apply=False)
+
+    assert plan.changes == []
+    assert "Svaret om 'Elin Exempel' sparas inte: inget pass ändras av det." in plan.notes
+    assert not any(note.startswith("Svaret sparas") for note in plan.notes)
+
+
+def test_a_place_answer_that_changes_no_seat_says_it_is_not_saved(app, session_factory, admins, arena):
+    session = session_factory()
+    kiosk = find_or_create_station(session, "Hindås", "Kiosken").id
+    session.commit()
+    # Only a past seat: it can't move, so the answer changes nothing.
+    rows = _rows([40, "Städning", datetime(2026, 10, 3), "9-12", "Tova Exempel", None, None])
+
+    plan = _run(app, session_factory, admins["ansvarig"], rows, stations={"Städning": kiosk}, apply=False)
+
+    assert plan.changes == []
+    assert "Svaret om 'Städning' sparas inte: inget pass ändras av det." in plan.notes
+
+
 def test_a_slot_changed_after_review_is_a_conflict(app, session_factory, admins, arena):
     from duty_web.admin.plan_tokens import PlanTokenError
 

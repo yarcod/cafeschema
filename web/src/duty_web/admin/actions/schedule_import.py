@@ -10,7 +10,10 @@ accepted survives the next import of the same file:
    changes, and the seat's pending swaps are cancelled;
 3. an undated slot the file now dates (same activity, time, station, name)
    → the date is set, swaps kept;
-4. left in the file → added; left in the database → removed.
+4. a seat at the station a corrected saved answer gave its activity (same
+   shift otherwise, same person) → the station changes, and its pending
+   swaps are cancelled;
+5. left in the file → added; left in the database → removed.
 
 What it may touch: activities in the file, in the seasons its dated rows
 fall in, plus undated slots. A slot dated before today, or one made under
@@ -140,32 +143,37 @@ def _reconcile(slot: Slot, want: _Want, kind: str, resolve) -> tuple[dict, list[
     """What a matched seat needs to become what the file says.
 
     One rule for every kind of match: "same" (the same shift, the same
-    person), "dated" (an undated seat the file now dates) and "moved" (the
-    same shift, another name). Returns the fields to write, Granska's
-    detail parts, and whether the owner changes in a way that cancels the
-    seat's pending swaps. Only a "moved" seat, or a seat a corrected saved
-    answer had given to the wrong player, changes owner; filling a seat
-    that had none cancels nothing.
+    person), "dated" (an undated seat the file now dates), "placed" (a seat
+    at the station a corrected saved answer had given its activity) and
+    "moved" (the same shift, another name). Returns the fields to write,
+    Granska's detail parts, and whether the change cancels the seat's
+    pending swaps. A "placed" seat changes its shift, which does. Only a
+    "moved" seat, or a seat a corrected saved answer had given to the wrong
+    player, changes owner; filling a seat that had none cancels nothing.
     """
     fields: dict = {}
     diffs: list[str] = []
-    moves_owner = False
+    cancels = False
     if kind == "dated":
         fields["date"] = want.day
         diffs.append(f"datum satt: {day_label(want.day)}")
+    if kind == "placed":
+        fields.update(station_id=want.station_id, station=want.station, venue=want.venue)
+        diffs.append(f"station {slot.station} → {want.station}")
+        cancels = True
     wrong = resolve.corrections.get(want.key)
     if kind == "moved":
         if want.player_id != slot.player_id:
             fields["player_id"] = want.player_id
             diffs.append(f"{owner_name(slot)} → {want.owner}")
-            moves_owner = slot.player_id is not None
+            cancels = cancels or slot.player_id is not None
     elif slot.player_id is None and want.player_id is not None:
         fields["player_id"] = want.player_id
         diffs.append(f"{owner_name(slot)} → {want.owner}")
     elif wrong is not None and slot.player_id == wrong.id and want.player_id != wrong.id:
         fields["player_id"] = want.player_id
         diffs.append(f"{owner_name(slot)} → {want.owner}")
-        moves_owner = True
+        cancels = True
     if _spelling(slot) != want.key or (slot.child_name or "") != want.spelling:
         fields["child_name"] = want.spelling
         if "player_id" not in fields:
@@ -178,7 +186,7 @@ def _reconcile(slot: Slot, want: _Want, kind: str, resolve) -> tuple[dict, list[
             fields["note"] = want.note
             if not (kind == "dated" and slot.note in WEEKDAY_NOTES):
                 diffs.append(_note_change(slot.note, want.note))
-    return fields, diffs, moves_owner
+    return fields, diffs, cancels
 
 
 def _spelling(slot: Slot) -> str:
@@ -265,6 +273,7 @@ class _Resolver:
         self.corrections: dict[str, Player] = {}   # spelling key → the player a saved answer gave
         self.saved_used_names: dict[str, Player] = {}
         self.new_places: dict[str, Station] = {}
+        self.place_corrections: dict[str, Station] = {}   # activity key → the station a saved answer gave
         self.saved_used_places: dict[str, Station] = {}
 
     def player(self, spelling: str) -> Player | None:
@@ -296,8 +305,13 @@ class _Resolver:
             return self.profiles[activity]
         key = normalize_key(activity)
         if key in self.answered_places:
-            self.new_places[activity] = self.answered_places[key]
-            return self.answered_places[key]
+            answer = self.answered_places[key]
+            saved = self.saved_places.get(key)
+            if saved is not None and saved.id != answer.id:
+                self.place_corrections[key] = saved
+            if saved is None or saved.id != answer.id:
+                self.new_places[activity] = answer
+            return answer
         if key in self.saved_places:
             self.saved_used_places[activity] = self.saved_places[key]
             return self.saved_places[key]
@@ -441,6 +455,17 @@ class ImportSchedule(Action):
             old = meant(slot)
             return want.player_id is not None and old is not None and old.id == want.player_id
 
+        def placed_before(slot: Slot, want: _Want) -> bool:
+            # The seat sits where a saved answer put its activity, and the
+            # row is at the station this review answers instead.
+            key = normalize_key(want.activity)
+            old = resolve.place_corrections.get(key)
+            new = resolve.answered_places.get(key)
+            return (
+                old is not None and new is not None and slot.station_id == old.id
+                and want.station_id == new.id
+            )
+
         plan = Plan()
         plan.basis.extend(slot_basis(slot) for slot in existing)
         plan.basis.append(["name_aliases", resolve.saved_name_rows])
@@ -465,6 +490,10 @@ class ImportSchedule(Action):
             s.date is None and w.day is not None and _ident(s)[1:5] == w.ident[1:5]
             and _weekday_fits(s.note, w.day) and same_person(s, w)
         ))]
+        pairs += [(s, w, "placed") for s, w in _pair(slots, todo, lambda s, w: (
+            _ident(s)[:4] + _ident(s)[5:] == w.ident[:4] + w.ident[5:]
+            and same_person(s, w) and placed_before(s, w)
+        ))]
         pairs += [(s, w, "moved") for s, w in _pair(slots, todo, lambda s, w: _ident(s) == w.ident)]
 
         edits: list[tuple[int, dict]] = []
@@ -475,7 +504,7 @@ class ImportSchedule(Action):
             plan.add("delete", "seat", slot_label(slot), owner_name(slot))
             touched.append(slot.date)
         for slot, want, kind in sorted(pairs, key=lambda item: slot_order(item[0])):
-            fields, diffs, moves_owner = (
+            fields, diffs, cancels = (
                 ({}, [], False) if frozen(slot) else _reconcile(slot, want, kind, resolve)
             )
             if not fields:
@@ -483,7 +512,7 @@ class ImportSchedule(Action):
                 continue
             plan.add("update", "seat", want.label(), "; ".join(diffs))
             edits.append((slot.id, fields))
-            if moves_owner:
+            if cancels:
                 changed.append(slot.id)
             touched.extend([slot.date, fields.get("date", slot.date)])
         for want in sorted(todo, key=_Want.order):
@@ -544,10 +573,18 @@ class ImportSchedule(Action):
             plan.notes.append(f"{len(kept_admin)} pass som lagts till under Pass lämnas orörda.")
         if untouched:
             plan.notes.append(f"Pass för {', '.join(untouched)} finns inte i filen och lämnas orörda.")
+        # Answers are saved by Genomför, which Granska only offers when
+        # something changes; without a change, say so instead of promising.
         for spelling, player in sorted(resolve.new_names.items()):
-            plan.notes.append(f"Svaret sparas till nästa import: '{spelling}' är {player.name}.")
+            plan.notes.append(
+                f"Svaret sparas till nästa import: '{spelling}' är {player.name}." if plan.changes
+                else f"Svaret om '{spelling}' sparas inte: inget pass ändras av det."
+            )
         for activity, station in sorted(resolve.new_places.items()):
-            plan.notes.append(f"Svaret sparas till nästa import: '{activity}' hålls på {station.name}.")
+            plan.notes.append(
+                f"Svaret sparas till nästa import: '{activity}' hålls på {station.name}." if plan.changes
+                else f"Svaret om '{activity}' sparas inte: inget pass ändras av det."
+            )
 
         removed = [slot.id for slot in slots]
         plan_swap_cancellations(session, plan, changed=changed, deleted=removed)
