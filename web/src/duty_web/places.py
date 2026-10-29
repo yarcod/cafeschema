@@ -59,7 +59,7 @@ def document_for_slot(slot) -> str | None:
 
     A linked station is authoritative, including when it has no instruction:
     the station is the ansvarig's decision. Only slots without a station yet
-    (imported by the old schedule-push since the last migration) fall back to
+    (written before stations existed) fall back to
     duties.py, the way every slot did before.
     """
     from .duties import profile_for

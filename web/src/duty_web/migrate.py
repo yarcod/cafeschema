@@ -11,7 +11,7 @@ venues/stations tables and creates stations from the text on slots. After
 that the tables belong to the ansvariga: later runs never create or rename
 a station and never touch a document, so an unlink or a delete done in the
 admin is not undone at the next start. Every run still links slots that
-have no station yet (the old schedule-push writes text only), by their
+have no station yet (slots imported before stations existed carry text only), by their
 duty's profile or their own venue and station text, but only to stations
 that already exist; a slot with no match is left for an ansvarig to place.
 

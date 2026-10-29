@@ -1,11 +1,11 @@
 """The coach's season workbook, read in memory (spec: Excel import).
 
-Moved here from scripts/build_seed_xlsx.py so an ansvarig can import the
+Replaces the old scripts/build_seed_xlsx.py, so an ansvarig can import the
 coach's own file. Two layouts are understood:
 
 - the coach's: a sheet whose header row has Aktivitet, Datum, Tid and
   Person 1..3, one row per shift;
-- the seed file the old `just schedule-build` wrote: syssla, datum, tid and
+- a seed-format file: syssla, datum, tid and
   barn (with arena, station and anteckning), one row per person.
 
 Either way the result is one row per seat, as plain values. The bytes are

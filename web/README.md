@@ -94,8 +94,7 @@ anrop och 1 MB per fil.
 ### Coachens Excel
 
 ✎ → **Pass** → **Importera Excel** → välj coachens bemanningsschema (.xlsx) →
-Granska → Genomför. Filen läses i minnet och sparas inte. Även en seed-fil
-från `just schedule-build` går att importera.
+Granska → Genomför. Filen läses i minnet och sparas inte.
 
 Importen är en ändringslista, inte en ersättning:
 
@@ -119,8 +118,7 @@ frågar den *Var hålls 'X'?*. Svaren sparas när importen genomförs med
 ändringar, så nästa import av samma fil frågar inget. Ett sparat svar visas
 förvalt och kan ändras där. En plats som filen namnger men som saknas under
 Platser stoppar importen, liksom ett datum som inte är ett datum (skriv *Datum
-ej satt* för pass utan datum). Det här ersätter `data/name_fixes.json` och
-`just schedule-push`, som finns kvar tills en riktig import har gjorts här.
+ej satt* för pass utan datum). Det här ersätter `data/name_fixes.json`.
 
 ### För agenter
 
@@ -145,6 +143,13 @@ indatan.
 curl -X POST -H "Authorization: Bearer $NYCKEL" -F team=f15 -F file=@F15-members.csv \
   https://innebandy.edholm.cc/admin/api/roster.import
 ```
+
+`just roster-push <slug> <fil>` och `just schedule-push <slug> <fil>` gör
+samma två anrop från terminalen: de visar Granska och frågar innan de
+genomför. Nyckeln läses ur 1Password vid anropet (`ADMIN_KEY_REF`, standard
+`op://Private/pjss2h7w7ec7amvsfbni4cdcvu/credential`) och skrivs aldrig ut
+eller till disk. En import med en obesvarad fråga genomförs aldrig från
+terminalen: svara i webben.
 
 Läsning: `GET /admin/api/slots?team=f15` (valfritt `from`/`to`),
 `GET /admin/api/roster?team=f15`, `GET /admin/api/venues`, `GET /admin/api/documents`.
@@ -174,8 +179,9 @@ cd web && uv run python ../scripts/verify_admin_migration.py /tmp/duty-copy.db
 ### Vilken instruktion hör till vilket pass
 
 Både **Att göra på passet** och påminnelsemailet länkar till den enda instruktion
-passet behöver, inte till listan. Kopplingen står i
-`web/src/duty_web/duties.py`:
+passet behöver, inte till listan. Kopplingen sås
+från `web/src/duty_web/duties.py` första gången migreringen körs, och ändras
+sedan under ✎ → Platser:
 
 | Pass | Var | Vad | Instruktion |
 |---|---|---|---|
@@ -184,10 +190,9 @@ passet behöver, inte till listan. Kopplingen står i
 | Cafépass Arena A | Wallenstam arena | Café Arena A, övre plan | `Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf` |
 
 Ett pass utan koppling — eller vars fil inte är uppladdad — länkar till listan i
-stället, så knappen aldrig leder till en 404. Lägger man till ett pass i tabellen
-ska samma rad in i `scripts/build_seed_xlsx.py` (`tests/test_build_seed_xlsx.py`
-larmar annars), och `just duties-push` sätter plats och café på de pass som redan
-är importerade.
+stället, så knappen aldrig leder till en 404. Tabellen i `duties.py` är bara fröet: nya platser och
+instruktioner läggs in under Platser, och `just duties-push` sätter plats och
+café på de pass som redan är importerade.
 
 ## Påminnelsemail
 
@@ -229,24 +234,22 @@ Den som stängt av e-post under Inställningar hoppas över.
 
 ## Uppdatera schemat
 
-Schemat kommer från tränarens Excel-fil och byggs om till en enklare fil som
-appen importerar. Två steg:
+Schemat kommer från tränarens Excel-fil, som importeras som den är. Två vägar:
+✎ → Pass → Importera Excel (se *Coachens Excel*), eller från terminalen:
 
 ```bash
-just schedule-build data/Bemanningsschema_26_27_Hans_260913_v2.xlsx data/f15_parent_mailing_list.csv data/seed_sasong_26_27.xlsx
-just schedule-push f15 data/seed_sasong_26_27.xlsx   # importerar till den driftsatta appen
+just roster-push f15 data/F15-members.csv   # 360Players medlemsexport (.csv), ingen standardfil
+just schedule-push f15 data/Bemanningsschema_26_27.xlsx   # tränarens .xlsx
 ```
 
-`schedule-build` (källa, kontaktlista, utfil) och `schedule-push` (lag, fil) har
-inga standardvärden, så att ett annat lags körning aldrig skriver över F15:s
-seed-fil eller importerar den till fel lag. `roster-push <slug>` använder
-`data/<slug>_parent_mailing_list.csv` om ingen fil anges.
+Båda visar Granska och frågar innan de genomför. Kör `roster-push` före
+`schedule-push`: importen kräver att spelarna finns. Ingen av dem har någon
+standardfil, så att ett annat lags körning aldrig importerar F15:s fil.
 
-`schedule-build` varnar om någon spelare i schemat saknar kontaktuppgifter.
-Sådana pass importeras ändå, men som **Ledigt** — ingen tilldelas dem.
-
-`schedule-push` **ersätter alla pass för det laget** (andra lags pass rörs inte). Föräldrarna själva behålls (de matchas på
-e-post), så ingen blir utloggad och ingens inställningar försvinner.
+Importen är en ändringslista, inte en ersättning (se *Coachens Excel*): pass
+som inte längre finns i filen tas bort för det laget, andra lags pass rörs inte.
+Föräldrarna själva behålls, så ingen blir utloggad och ingens inställningar
+försvinner.
 
 ### Tränarens fil
 
@@ -260,8 +263,8 @@ Bladet **`Säsong 26-27`**, en rad per pass:
 
 - **Aktivitet** — vad som helst. Nya aktiviteter behöver inte läggas upp någonstans;
   de får automatiskt en egen färg utifrån namnet, samma färg för alla.
-  Båda "Arena värdskap"-raderna heter **Cafépass** i appen — `build_seed_xlsx.py`
-  döper om dem vid bygget, och fyller samtidigt i arena och café (se *Vilken
+  Båda "Arena värdskap"-raderna heter **Cafépass** i appen — importen
+  döper om dem, och fyller samtidigt i arena och café (se *Vilken
   instruktion hör till vilket pass*).
 - **Datum** — `ÅÅÅÅ-MM-DD`. Är datumet inte spikat ännu duger vilken text som helst
   (t.ex. `Datum ej satt (VT27)`) — passet visas då under **Datum ej satt** i stället
@@ -273,32 +276,25 @@ Bladet **`Säsong 26-27`**, en rad per pass:
 
 ### Föräldrar och barn
 
-`data/f15_parent_mailing_list.csv` kopplar ihop spelare med förälder och e-post:
+Laglistan kommer från 360Players medlemsexport (.csv), som `roster-push` eller
+✎ → Laglista importerar. Den kopplar ihop spelare med föräldrar och e-post.
 
-```csv
-parent_name,parent_email,children_on_team
-Kim Exempel,kim@exempel.se,Alva Exempel
-```
+> Exportfilerna under `data/` innehåller riktiga namn och adresser och ligger
+> utanför repot (`.gitignore`).
 
-> Filerna under `data/` innehåller riktiga namn och adresser och ligger utanför
-> repot (`.gitignore`). Detsamma gäller `data/name_fixes.json`, som håller reda
-> på spelare som stavas olika i de två filerna.
-
-- **Lägga till en familj** — lägg till en rad. Kör `just schedule-build <källa> <kontaktlista> <utfil>`
-  och sedan `just schedule-push <slug> <fil>` igen, så plockas den upp.
-- **Två föräldrar i samma familj** — lägg båda på varsin rad. Den som står först får
-  passen; den andra kan alltid vidarebefordra inloggningslänken.
-- **Namnet stavas olika i de två filerna** — lägg till stavningen i
-  `data/name_fixes.json` (`{"Namn i schemat": "Namn i kontaktlistan"}`).
-  Annars blir passet *Ledigt*.
+- **Lägga till en familj** — lägg till barnet och föräldern i 360Player och kör
+  `just roster-push <slug> <fil>` med en ny medlemsexport.
+- **Två föräldrar i samma familj** — den som står först får passen; den andra
+  kan alltid vidarebefordra inloggningslänken.
+- **Namnet stavas olika i schemat och laglistan** — granskningen frågar *Vem är
+  'X'?* och sparar svaret. Utan svar blir passet *Ledigt*.
 
 ## Lägga till ett lag
 
 ```bash
 just team-add p13 P13 "Mölnlycke idrottshall"                      # skapar laget (slug, namn, hall)
-just schedule-build <tränarens fil> data/p13_parent_mailing_list.csv data/seed_p13.xlsx
-just roster-push p13 [fil]                                         # spelare och föräldrar; standardfil data/p13_parent_mailing_list.csv
-just schedule-push p13 data/seed_p13.xlsx                          # laddar upp passen
+just roster-push p13 <fil>                                         # spelare och föräldrar; 360Players medlemsexport (.csv)
+just schedule-push p13 <fil>                                       # tränarens .xlsx
 just docs-push <fil> p13                                           # lagets egna instruktioner (utan lag: delade av klubben)
 just docs-list                                                     # kontrollera vad som ligger var
 ```
@@ -317,7 +313,7 @@ just test-fixture-remove min.adress@exempel.se   # tar bort föräldern, passet 
 ```
 
 Testpasset syns för alla i **Hela laget**, så ta bort det när det är avklarat.
-Det försvinner också vid nästa `schedule-push` för laget, eftersom den ersätter just det lagets pass.
+Det försvinner också vid nästa `schedule-push` för laget, om passet inte står i filen.
 
 ## Utveckling
 
@@ -399,10 +395,10 @@ just web-ssh         # skal på maskinen
    ```
 
    Slugen (`f15`) är lagets korta namn i adresser, dokumentmappen och i
-   `just roster-push <slug>` / `just schedule-push <slug> <fil>`. Bara a–z, 0–9
+   `just roster-push <slug> <fil>` / `just schedule-push <slug> <fil>`. Bara a–z, 0–9
    och bindestreck.
 
-6. **Fyll på schemat:** `just schedule-build <tränarens fil> <kontaktlista> <utfil>` och `just schedule-push f15 <utfil>`
+6. **Fyll på schemat:** `just roster-push f15 <medlemsexport>` och sedan `just schedule-push f15 <tränarens fil>`
 
 7. **Valfritt — egen domän:**
 

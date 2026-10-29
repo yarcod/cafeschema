@@ -14,9 +14,7 @@ Runs against a database file, either on the Fly machine (via
 
     python scripts/rename_duty_profiles.py [db_path]
 
-Safe to re-run: a second run finds nothing left to change. The same table
-goes into build_seed_xlsx.py, so the next schedule import writes these
-values itself instead of undoing them.
+Safe to re-run: a second run finds nothing left to change.
 """
 
 from __future__ import annotations

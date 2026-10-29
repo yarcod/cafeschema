@@ -7,12 +7,12 @@
 
 ## Context
 
-Today every change to a team's schedule goes through the terminal: the coach's
+Before this design, every change to a team's schedule went through the terminal: the coach's
 Excel is rebuilt with `just schedule-build` (with `data/name_fixes.json` and a
 contact list), then pushed with `just schedule-push`, which **replaces every
 slot of the team and drops its swaps**. Rosters, documents and duty profiles
-(venue, café, instruction) follow the same path, and the venue/café/instruction
-mapping is hardcoded in `web/src/duty_web/duties.py`.
+(venue, café, instruction) followed the same path, and the venue/café/instruction
+mapping was hardcoded in `web/src/duty_web/duties.py`.
 
 That works for one person with a shell. It doesn't work for the
 *föräldraansvariga* of each team, and it isn't something an AI agent can
@@ -458,6 +458,8 @@ Each step deploys on its own.
    (read from 1Password at call time, never written to disk), and
    `admin_app.py` is removed. This is plan 3: it waits until a real import has
    been done with `schedule.import`.
+   Done in plan 3: `scripts/admin_push.py` is that call; `admin_app.py`,
+   `seed.py` and `scripts/build_seed_xlsx.py` are gone.
 
 ## Testing
 

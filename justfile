@@ -36,10 +36,6 @@ web-test:
 web-run:
     cd web && {{web_env}} uv run python -m duty_web
 
-# Build a seed file from the trainer's schedule + the parent contact list
-schedule-build source contacts out:
-    uv run python scripts/build_seed_xlsx.py {{source}} {{contacts}} {{out}}
-
 # Create a team in the deployed app (once per team). The slug names it in every other recipe
 team-add slug name venue="Wallenstam arena":
     printf 'put scripts/remote_team_add.py /tmp/remote_team_add.py\n' | fly ssh sftp shell -a duty-swap-webapp
