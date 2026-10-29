@@ -12,7 +12,7 @@ from duty_web.admin.executor import apply_plan, dry_run
 from duty_web.admin.permissions import admin_context
 from duty_web.admin.plan_tokens import PlanTokenError
 from duty_web.clock import utcnow
-from duty_web.models import Person, Slot, SwapRequest, Team
+from duty_web.models import Person, Player, Slot, SwapRequest, Team
 from duty_web.places import find_or_create_station
 
 from .conftest import bearer, login, make_family
@@ -364,3 +364,26 @@ def test_no_move_mail_for_a_note_a_first_date_or_a_family_without_mail(
 
     assert moved == []
     assert not any("får ett mejl om att passet flyttas" in w for w in plan.warnings)
+
+
+def test_siblings_on_one_shift_get_one_move_mail(app, session_factory, admins, seeded, moved):
+    session = session_factory()
+    team = session.get(Team, seeded["team"].id)
+    sibling = make_family(session, team, "Tilda Exempel", [])
+    sibling.parents = list(session.get(Player, seeded["player"].id).parents)   # same parents
+    first = session.get(Slot, seeded["future_slot"].id)
+    twin = Slot(
+        team_id=team.id, date=first.date, start_time=first.start_time, end_time=first.end_time,
+        station=first.station, venue=first.venue, duty_name=first.duty_name,
+        child_name=sibling.name, player_id=sibling.id,
+    )
+    session.add(twin)
+    session.commit()
+
+    plan = _run(app, session_factory, admins["ansvarig"], "slot.update",
+                slot_ids=[first.id, twin.id], start="17:00", end="20:00")
+
+    assert len(moved) == 1
+    assert sorted(w.split(" får ")[0] for w in plan.warnings if "får ett mejl om att passet flyttas" in w) == [
+        "Tilda Exempel", "Tova Exempel"]
+    assert not any("@" in w for w in plan.warnings)

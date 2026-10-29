@@ -123,7 +123,8 @@ def plan_shift_notices(session: Session, plan, edits: Iterable[tuple[Slot, dict]
     Only a seat that keeps its player: a new owner is the swap mail's
     business, and a first date is like a new shift, which nobody is mailed
     about (the reminder goes out before it). One warning per seat names the
-    player, so Granska says beforehand who gets mail. Returns the slots
+    player, so Granska says beforehand who gets mail; seats with the same
+    family and the same text (siblings on one shift) share one mail. Returns the slots
     mailed: their cancelled swap is in the same mail, so call this before
     plan_swap_cancellations and pass the result as `mailed`.
     """
@@ -137,6 +138,9 @@ def plan_shift_notices(session: Session, plan, edits: Iterable[tuple[Slot, dict]
     pending = pending_slot_ids(session, [slot.id for slot, _ in moves])
     link = url_for("schedule.mine", _external=True)
     mailed: set[int] = set()
+    # Siblings on one shift share their parents and their text: one mail,
+    # whichever seats it covers. Dicts keep the order the seats came in.
+    groups: dict[tuple, dict] = {}
     for slot, fields in moves:
         before = slot_label(slot)
         after = shift_label(
@@ -147,11 +151,17 @@ def plan_shift_notices(session: Session, plan, edits: Iterable[tuple[Slot, dict]
         if after == before or not emails:
             continue
         plan.warnings.append(f"{slot.player.name} får ett mejl om att passet flyttas: {before} → {after}.")
-        plan.after_commit.append(partial(
-            send_shift_moved, emails, before=before, after=after,
-            swap_cancelled=slot.id in pending, link=link,
-        ))
+        group = groups.setdefault(
+            (frozenset(emails), before, after),
+            {"emails": emails, "before": before, "after": after, "swap_cancelled": False},
+        )
+        group["swap_cancelled"] = group["swap_cancelled"] or slot.id in pending
         mailed.add(slot.id)
+    for group in groups.values():
+        plan.after_commit.append(partial(
+            send_shift_moved, group["emails"], before=group["before"], after=group["after"],
+            swap_cancelled=group["swap_cancelled"], link=link,
+        ))
     return mailed
 
 
