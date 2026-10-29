@@ -1,6 +1,6 @@
 # fly.toml app configuration file for the duty swap web app
 app = 'duty-swap-webapp'
-primary_region = 'arn'
+primary_region = 'ams'
 
 [build]
 
