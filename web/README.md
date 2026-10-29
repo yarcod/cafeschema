@@ -277,7 +277,7 @@ Bladet **`Säsong 26-27`**, en rad per pass:
 ### Föräldrar och barn
 
 Laglistan kommer från 360Players medlemsexport (.csv), som `roster-push` eller
-✎ → Laglista importerar. Den kopplar ihop spelare med föräldrar och e-post.
+✎ → Lag & ansvariga importerar (se *Laglistan från 360Player*). Den kopplar ihop spelare med föräldrar och e-post.
 
 > Exportfilerna under `data/` innehåller riktiga namn och adresser och ligger
 > utanför repot (`.gitignore`).
