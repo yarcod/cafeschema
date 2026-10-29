@@ -5,6 +5,8 @@ import pytest
 from duty_web.app import create_app
 from duty_web.config import AppConfig
 
+from .conftest import link_instruction
+
 
 @pytest.fixture
 def docs_app(tmp_path):
@@ -114,37 +116,59 @@ def test_missing_documents_directory_renders_an_empty_page(empty_docs_app):
     assert "Inga dokument" in response.get_data(as_text=True)
 
 
-def test_a_duty_links_straight_to_its_own_instruction(app):
-    from duty_web.routes.document_routes import document_url_for_duty
+def _placed_slot(session_factory, seeded, document, team=None):
+    """The seeded future slot, placed at a station linking `document`."""
+    from duty_web.models import Slot
+
+    session = session_factory()
+    slot = session.get(Slot, seeded["future_slot"].id)
+    if team is not None:
+        slot.team_id = team.id
+    link_instruction(session, slot, "Mölnlycke idrottshall", "Café", document)
+    session.commit()
+    return session, slot
+
+
+def test_a_slot_links_straight_to_its_stations_instruction(app, seeded, session_factory):
+    from duty_web.routes.document_routes import document_url_for_slot
+
+    _, slot = _placed_slot(session_factory, seeded, "Cafeteria_Instruktion_MIH.pdf")
 
     with app.test_request_context():
-        url = document_url_for_duty("Bästkustcupen")
-
-    assert url == "/dokument/Cafeteria_Instruktion_MIH.pdf"
+        assert document_url_for_slot(slot) == "/dokument/Cafeteria_Instruktion_MIH.pdf"
 
 
-def test_a_duty_without_an_instruction_links_to_the_index(app):
-    from duty_web.routes.document_routes import document_url_for_duty
+def test_a_slot_without_an_instruction_links_to_the_index(app, seeded, session_factory):
+    from duty_web.models import Slot
+    from duty_web.routes.document_routes import document_url_for_slot
+
+    slot = session_factory().get(Slot, seeded["future_slot"].id)
 
     with app.test_request_context():
-        assert document_url_for_duty("Åby Julmarknad") == "/dokument"
+        assert document_url_for_slot(slot) == "/dokument"
 
 
-def test_a_duty_whose_instruction_is_not_uploaded_yet_links_to_the_index(
-    empty_docs_app,
+def test_a_slot_whose_instruction_is_not_uploaded_yet_links_to_the_index(
+    app, seeded, session_factory
 ):
     """Better the index than a 404 on the morning of the shift."""
-    from duty_web.routes.document_routes import document_url_for_duty
+    from duty_web.routes.document_routes import document_url_for_slot
 
-    with empty_docs_app.test_request_context():
-        assert document_url_for_duty("Bästkustcupen") == "/dokument"
+    _, slot = _placed_slot(session_factory, seeded, "Inte_uppladdad.pdf")
+
+    with app.test_request_context():
+        assert document_url_for_slot(slot) == "/dokument"
 
 
-def test_an_instruction_link_can_be_built_for_a_mail(app):
-    from duty_web.routes.document_routes import document_url_for_duty
+def test_an_instruction_link_can_be_built_for_a_mail(app, seeded, session_factory):
+    from duty_web.routes.document_routes import instruction_url_for_slot
+
+    _, slot = _placed_slot(
+        session_factory, seeded, "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"
+    )
 
     with app.test_request_context(base_url="https://duty-swap-webapp.fly.dev"):
-        url = document_url_for_duty("Cafépass", external=True)
+        url = instruction_url_for_slot(slot, external=True)
 
     assert url == (
         "https://duty-swap-webapp.fly.dev/dokument/"
@@ -164,40 +188,46 @@ def _team_file(documents_dir, slug, name, content=b"%PDF-1.4 team"):
     (folder / name).write_bytes(content)
 
 
-def test_a_teams_own_instruction_wins_over_the_shared_one(app, documents_dir):
-    from duty_web.routes.document_routes import document_url_for_duty
+def test_a_teams_own_instruction_wins_over_the_shared_one(
+    app, documents_dir, seeded, second_team, session_factory
+):
+    from duty_web.routes.document_routes import instruction_url_for_slot
 
     _team_file(documents_dir, "p13", "Cafeteria_Instruktion_MIH.pdf")
+    _, p13_slot = _placed_slot(
+        session_factory, seeded, "Cafeteria_Instruktion_MIH.pdf", team=second_team["team"]
+    )
 
     with app.test_request_context():
-        assert document_url_for_duty("Bästkustcupen", "p13") == (
+        assert instruction_url_for_slot(p13_slot) == (
             "/dokument/p13/Cafeteria_Instruktion_MIH.pdf"
         )
-        assert document_url_for_duty("Bästkustcupen", "f14-bla") == (
-            "/dokument/Cafeteria_Instruktion_MIH.pdf"
-        )
 
 
-def test_a_team_without_its_own_copy_uses_the_shared_instruction(app):
-    from duty_web.routes.document_routes import document_url_for_duty
+def test_a_team_without_its_own_copy_uses_the_shared_instruction(
+    app, seeded, second_team, session_factory
+):
+    from duty_web.routes.document_routes import instruction_url_for_slot
+
+    _, p13_slot = _placed_slot(
+        session_factory, seeded, "Cafeteria_Instruktion_MIH.pdf", team=second_team["team"]
+    )
 
     with app.test_request_context():
-        assert document_url_for_duty("Cafépass", "p13") == (
-            "/dokument/Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"
-        )
+        assert instruction_url_for_slot(p13_slot) == "/dokument/Cafeteria_Instruktion_MIH.pdf"
 
 
 def test_an_instruction_only_one_team_has_is_not_offered_to_the_others(
-    app, documents_dir
+    app, documents_dir, seeded, session_factory
 ):
-    from duty_web.routes.document_routes import document_url_for_duty
+    from duty_web.routes.document_routes import document_url_for_slot
 
     (documents_dir / "Cafeteria_Instruktion_MIH.pdf").unlink()
     _team_file(documents_dir, "p13", "Cafeteria_Instruktion_MIH.pdf")
+    _, f14_slot = _placed_slot(session_factory, seeded, "Cafeteria_Instruktion_MIH.pdf")
 
     with app.test_request_context():
-        assert document_url_for_duty("Bästkustcupen", "p13").startswith("/dokument/p13/")
-        assert document_url_for_duty("Bästkustcupen", "f14-bla") == "/dokument"
+        assert document_url_for_slot(f14_slot) == "/dokument"
 
 
 def test_a_parent_can_download_their_teams_document(

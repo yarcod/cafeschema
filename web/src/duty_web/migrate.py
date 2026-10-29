@@ -6,11 +6,11 @@ columns. New tables come from create_all; new columns on existing tables
 need ALTER TABLE, which create_all never does.
 
 The data half runs its seeding once, while the stations table is empty:
-it moves duties.py's hardcoded venues, cafés and instructions into the
-venues/stations tables and creates stations from the text on slots. After
-that the tables belong to the ansvariga: later runs never create or rename
-a station and never touch a document, so an unlink or a delete done in the
-admin is not undone at the next start. Every run still links slots that
+it creates duties.py's venues and cafés in the venues/stations tables and
+stations from the text on slots, all without an instruction (those are
+linked under Platser). After that the tables belong to the ansvariga: later
+runs never create or rename a station and never touch a document, so an
+unlink or a delete done in the admin is not undone at the next start. Every run still links slots that
 have no station yet (slots imported before stations existed carry text only), by their
 duty's profile or their own venue and station text, but only to stations
 that already exist; a slot with no match is left for an ansvarig to place.
@@ -71,9 +71,7 @@ def migrate(db_path: str) -> MigrationReport:
         first_run = before == 0
         if first_run:
             for profile in DUTY_PROFILES.values():
-                station = find_or_create_station(session, profile.venue, profile.station)
-                if station.document is None:
-                    station.document = profile.document
+                find_or_create_station(session, profile.venue, profile.station)
 
         if first_run:
             # Only now may a slot's own text create its place (linked just

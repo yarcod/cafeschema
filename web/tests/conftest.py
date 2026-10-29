@@ -34,12 +34,23 @@ def make_family(session, team, player_name, parents):
     return player
 
 
+def link_instruction(session, slot, venue, station, document):
+    """Place a slot at a station that links an instruction, the way an
+    ansvarig does under Platser. The station alone decides the link."""
+    from duty_web.places import find_or_create_station
+
+    row = find_or_create_station(session, venue, station)
+    row.document = document
+    slot.station_id = row.id
+    return row
+
+
 @pytest.fixture
 def documents_dir(tmp_path):
     """The instructions as they sit on the Fly volume.
 
-    Named exactly as duties.py maps them, so a test can tell a real link to
-    an instruction apart from the fallback to the document index.
+    Named like the club's real ones, so a test can tell a real link to an
+    instruction apart from the fallback to the document index.
     """
     directory = tmp_path / "dokument"
     directory.mkdir()

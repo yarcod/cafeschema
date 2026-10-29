@@ -1,5 +1,7 @@
 from duty_web.models import Person
 
+from .conftest import link_instruction
+
 
 def _login(client, person):
     with client.session_transaction() as sess:
@@ -93,7 +95,13 @@ def _cafepass_slot(session_factory, seeded, **overrides):
         player_id=seeded["player"].id,
     )
     fields.update(overrides)
-    session.add(Slot(**fields))
+    slot = Slot(**fields)
+    session.add(slot)
+    if fields["station"]:
+        link_instruction(
+            session, slot, fields["venue"], fields["station"],
+            "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf",
+        )
     session.commit()
 
 
@@ -107,7 +115,7 @@ def test_att_gora_says_where_and_which_cafe(client, seeded, session_factory):
     assert "Café Arena B, nedre plan" in body
 
 
-def test_att_gora_links_to_the_instruction_for_that_duty(
+def test_att_gora_links_to_the_instruction_for_that_station(
     client, seeded, session_factory
 ):
     _cafepass_slot(session_factory, seeded)

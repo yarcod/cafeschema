@@ -55,19 +55,12 @@ ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".txt", ".md"}
 
 
 def document_for_slot(slot) -> str | None:
-    """The instruction filename this slot links, or None.
+    """The instruction filename this slot's station links, or None.
 
-    A linked station is authoritative, including when it has no instruction:
-    the station is the ansvarig's decision. Only slots without a station yet
-    (written before stations existed) fall back to
-    duties.py, the way every slot did before.
+    The station is the ansvarig's decision, including when it has no
+    instruction. A slot not placed at a station yet links none.
     """
-    from .duties import profile_for
-
-    if slot.station_row is not None:
-        return slot.station_row.document
-    profile = profile_for(slot.duty_name)
-    return profile.document if profile else None
+    return slot.station_row.document if slot.station_row is not None else None
 
 
 @dataclass(frozen=True)

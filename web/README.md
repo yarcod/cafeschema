@@ -169,8 +169,8 @@ det som genomförs är det som granskades.
 `entrypoint.sh` kör `python -m duty_web.migrate` vid varje start, före appen.
 Den är idempotent:
 
-- Stationer och instruktionskopplingar läggs in från `duties.py` bara första
-  gången, när tabellen `stations` är tom. Senare körningar kopplar bara
+- Platser och stationer läggs in från `duties.py` bara första gången, när
+  tabellen `stations` är tom, och då utan instruktion. Senare körningar kopplar bara
   passen som saknar station till redan befintliga stationer.
 - `CLUB_ADMINS` fungerar bara för adresser som redan finns bland personerna och
   bara när ingen är klubbadmin. Hoppades en adress över: importera laglistan
@@ -181,27 +181,28 @@ Repetera mot en kopia innan en driftsättning som ändrar den:
 ```bash
 just db-pull /tmp/duty-copy.db
 cd web && uv run python -m duty_web.migrate /tmp/duty-copy.db
-cd web && uv run python ../scripts/verify_admin_migration.py /tmp/duty-copy.db
 ```
 
 ### Vilken instruktion hör till vilket pass
 
 Både **Att göra på passet** och påminnelsemailet länkar till den enda instruktion
-passet behöver, inte till listan. Kopplingen sås
-från `web/src/duty_web/duties.py` första gången migreringen körs, och ändras
-sedan under ✎ → Platser:
+passet behöver, inte till listan: den som passets station är kopplad till under
+✎ → Platser. Kopplingen finns bara där, inte i koden, så en ny version av en
+instruktion är `just docs-push` och ett byte under Platser — ingen driftsättning.
 
-| Pass | Var | Vad | Instruktion |
-|---|---|---|---|
-| Bästkustcupen | Mölnlycke idrottshall | Café | `Cafeteria_Instruktion_MIH.pdf` |
-| Cafépass | Wallenstam arena | Café Arena B, nedre plan | `Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf` |
-| Cafépass Arena A | Wallenstam arena | Café Arena A, övre plan | `Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf` |
+`web/src/duty_web/duties.py` säger bara *var* en känd aktivitet hålls (plats och
+station), så att importen kan placera passen:
 
-Ett pass utan koppling — eller vars fil inte är uppladdad — länkar till listan i
-stället, så knappen aldrig leder till en 404. Tabellen i `duties.py` sås in vid första
-migreringen och gäller sedan bara som reserv för pass och aktiviteter utan
-station. Nya platser och instruktioner läggs in under Platser, och
-`just duties-push` sätter plats och café på de pass som redan är importerade.
+| Pass | Var | Vad |
+|---|---|---|
+| Bästkustcupen | Mölnlycke idrottshall | Café |
+| Cafépass | Wallenstam arena | Café Arena B, nedre plan |
+| Cafépass Arena A | Wallenstam arena | Café Arena A, övre plan |
+
+Ett pass utan station, en station utan instruktion eller en instruktion som inte
+är uppladdad länkar till listan i stället, så knappen aldrig leder till en 404.
+Nya platser läggs in under Platser, och `just duties-push` sätter plats och café
+på de pass som redan är importerade.
 
 ## Påminnelsemail
 

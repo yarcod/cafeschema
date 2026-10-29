@@ -4,9 +4,9 @@ Files live on the Fly volume rather than in the image, so adding one doesn't
 need a deploy (see `just docs-push`). The reminder mail links here instead of
 attaching anything, so there is one copy to keep up to date.
 
-Both the mail and Att göra link to the one instruction that duty needs
-(`document_url_for_duty`) rather than to the index, so nobody has to pick the
-right café's PDF out of a list on the way to their shift.
+Both the mail and Att göra link to the one instruction the slot's station
+links (`document_url_for_slot`) rather than to the index, so nobody has to
+pick the right café's PDF out of a list on the way to their shift.
 
 Two levels of documents: files at the root of the documents folder are
 shared by the whole club; files in <documents_dir>/<team slug>/ are that
@@ -29,7 +29,6 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
-from ..duties import profile_for
 from ..places import ALLOWED_SUFFIXES, document_for_slot
 from ..roster import teams_for_parent
 from ..session_scope import get_session as _session
@@ -81,32 +80,14 @@ def _url_for_document(
     return None
 
 
-def instruction_url_for_duty(
-    duty_name: str | None, team_slug: str | None = None, *, external: bool = False
-) -> str | None:
-    """This duty's own instruction per duties.py, or None."""
-    profile = profile_for(duty_name)
-    return _url_for_document(
-        profile.document if profile else None, team_slug, external=external
-    )
-
-
 def instruction_url_for_slot(slot, *, external: bool = False) -> str | None:
-    """This slot's own instruction: its station's, or its duty's until linked."""
+    """This slot's own instruction: its station's, or None."""
     return _url_for_document(document_for_slot(slot), slot.team.slug, external=external)
 
 
-def document_url_for_duty(
-    duty_name: str | None, team_slug: str | None = None, *, external: bool = False
-) -> str:
+def document_url_for_slot(slot) -> str:
     """Where Att göra's "Läs instruktionerna" goes — the index as a fallback,
     so the button always leads somewhere readable."""
-    return instruction_url_for_duty(duty_name, team_slug, external=external) or url_for(
-        "documents.dokument", _external=external
-    )
-
-
-def document_url_for_slot(slot) -> str:
     return instruction_url_for_slot(slot) or url_for("documents.dokument")
 
 

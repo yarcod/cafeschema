@@ -1,3 +1,6 @@
+from .conftest import link_instruction
+
+
 def test_api_schedule_requires_the_api_key(client):
     response = client.get("/api/schedule")
 
@@ -53,12 +56,14 @@ def test_api_schedule_links_each_shift_to_its_instruction(
     from duty_web.models import Slot
 
     session = session_factory()
-    session.add(Slot(
+    cup = Slot(
         team_id=seeded["team"].id, date=date.today() + timedelta(days=3),
         start_time=time(18, 0), end_time=time(21, 0),
         station="Café", duty_name="Bästkustcupen",
         venue="Mölnlycke idrottshall", player_id=seeded["player"].id,
-    ))
+    )
+    session.add(cup)
+    link_instruction(session, cup, "Mölnlycke idrottshall", "Café", "Cafeteria_Instruktion_MIH.pdf")
     session.commit()
 
     payload = client.get(
@@ -71,7 +76,7 @@ def test_api_schedule_links_each_shift_to_its_instruction(
 
 
 def test_a_duty_with_no_instruction_has_no_document_url(client, seeded):
-    """'Arena värdskap' predates the rename table and maps to nothing."""
+    """The seeded slots are at no station, so they link no instruction."""
     payload = client.get(
         "/api/schedule", headers={"X-Api-Key": "test-api-key"}
     ).get_json()
@@ -89,12 +94,14 @@ def test_api_links_a_teams_shift_to_that_teams_own_instruction(
     (documents_dir / "p13").mkdir()
     (documents_dir / "p13" / "Cafeteria_Instruktion_MIH.pdf").write_bytes(b"%PDF")
     session = session_factory()
-    session.add(Slot(
+    cup = Slot(
         team_id=second_team["team"].id, date=seeded["future_slot"].date,
         start_time=time(15, 0), end_time=time(17, 0), station="Café",
         duty_name="Bästkustcupen", venue="Mölnlycke idrottshall",
         child_name="Nils Främling", player_id=second_team["stranger"].id,
-    ))
+    )
+    session.add(cup)
+    link_instruction(session, cup, "Mölnlycke idrottshall", "Café", "Cafeteria_Instruktion_MIH.pdf")
     session.commit()
 
     rows = client.get("/api/schedule", headers={"X-Api-Key": "test-api-key"}).get_json()

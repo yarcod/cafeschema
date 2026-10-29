@@ -1,21 +1,16 @@
 """What parents need to know about a duty beyond what the schedule file says.
 
 The trainer's spreadsheet names an activity and, for the arena duties, an
-arena. It doesn't say which café inside that building, and it doesn't say
-which instruction to read before the shift. That is the team's own knowledge,
-it changes about once a season.
+arena. It doesn't say which café inside that building. That is the team's
+own knowledge, it changes about once a season.
 
-The migration creates venues, stations and their instructions from
-DUTY_PROFILES the first time it runs (while the stations table is empty);
-after that the places live in the database (✎ → Platser). The table stays as
-the fallback for slots and activities with no station: a schedule import,
-document lookup and the migration's linking still consult it. A document is a bare
-filename (Slot has no column for it): the document routes look for it in the slot's team folder first and then among the
-club's shared documents, so a team can have its own version of an
-instruction without a profile of its own.
+The migration creates venues and stations from DUTY_PROFILES the first time
+it runs (while the stations table is empty); after that the places live in
+the database (✎ → Platser). The table stays as the way a schedule import and
+the migration's linking find the station for a known activity.
 
-The club's remaining instructions (WA C, Hindås, Landvetter Pinntorp) are
-uploaded to the volume but not mapped: no duty is held there yet.
+Which instruction a station links is never decided here: it is set under
+Platser, where it can change without a deploy.
 """
 
 from __future__ import annotations
@@ -27,29 +22,24 @@ from dataclasses import dataclass
 class DutyProfile:
     venue: str
     station: str
-    document: str | None
 
 
 DUTY_PROFILES: dict[str, DutyProfile] = {
     "Bästkustcupen": DutyProfile(
         venue="Mölnlycke idrottshall",
         station="Café",
-        document="Cafeteria_Instruktion_MIH.pdf",
     ),
     "Cafépass": DutyProfile(
         venue="Wallenstam arena",
         station="Café Arena B, nedre plan",
-        document="Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf",
     ),
-    # Same building, other café, other instruction — and the instruction is
-    # looked up by duty name, so it has to be a name of its own rather than a
-    # "Cafépass" that happens to sit elsewhere. The plain name keeps meaning
-    # Arena B: renaming it would change every slot of the season and the
-    # colour parents already recognise it by.
+    # Same building, other café — a name of its own rather than a "Cafépass"
+    # that happens to sit elsewhere, so an import can place it. The plain
+    # name keeps meaning Arena B: renaming it would change every slot of the
+    # season and the colour parents already recognise it by.
     "Cafépass Arena A": DutyProfile(
         venue="Wallenstam arena",
         station="Café Arena A, övre plan",
-        document="Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf",
     ),
 }
 
@@ -75,7 +65,7 @@ def profile_for(name: str | None) -> DutyProfile | None:
     """The profile for a duty, under its current name or its old one.
 
     Accepting the old spelling keeps a database that hasn't been migrated
-    yet from losing its instruction links.
+    yet from losing its place.
     """
     canonical = canonical_duty_name(name)
     key = _BY_KEY.get(canonical.casefold())

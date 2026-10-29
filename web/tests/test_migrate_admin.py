@@ -61,13 +61,13 @@ def test_places_come_from_the_duty_profiles(tmp_path):
     session = _session(path)
     assert {v.name for v in session.query(Venue)} == {"Wallenstam arena", "Mölnlycke idrottshall"}
     documents = {(s.venue.name, s.name): s.document for s in session.query(Station)}
-    assert documents[("Wallenstam arena", "Café Arena B, nedre plan")] == (
-        "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"
-    )
-    assert documents[("Wallenstam arena", "Café Arena A, övre plan")] == (
-        "Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf"
-    )
-    assert documents[("Mölnlycke idrottshall", "Café")] == "Cafeteria_Instruktion_MIH.pdf"
+    assert set(documents) >= {
+        ("Wallenstam arena", "Café Arena B, nedre plan"),
+        ("Wallenstam arena", "Café Arena A, övre plan"),
+        ("Mölnlycke idrottshall", "Café"),
+    }
+    # Which instruction a station links is set under Platser, not in code.
+    assert set(documents.values()) == {None}
 
 
 def test_slots_are_linked_by_their_duty_or_their_own_text(tmp_path):
@@ -78,7 +78,7 @@ def test_slots_are_linked_by_their_duty_or_their_own_text(tmp_path):
     session = _session(path)
     # By the duty's profile, even where the slot's own text is empty.
     assert session.get(Slot, 1).station_row.name == "Café Arena B, nedre plan"
-    assert session.get(Slot, 2).station_row.document == "Cafeteria_Instruktion_MIH.pdf"
+    assert session.get(Slot, 2).station_row.name == "Café"
     # By its own text when the duty has no profile; the extra space in the
     # venue doesn't create a second Mölnlycke idrottshall.
     kiosk = session.get(Slot, 4).station_row

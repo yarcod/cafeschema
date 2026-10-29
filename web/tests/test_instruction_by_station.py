@@ -1,7 +1,6 @@
-"""Once a slot has a station, the station decides which instruction it links."""
+"""The station decides which instruction a slot links, and nothing else does."""
 
-from duty_web.duties import profile_for
-from duty_web.models import Slot, Team
+from duty_web.models import Slot
 from duty_web.places import find_or_create_station
 
 API = {"X-Api-Key": "test-api-key"}
@@ -29,7 +28,10 @@ def test_a_linked_station_decides_the_instruction(client, seeded, session_factor
 def test_a_linked_station_without_instruction_links_nothing(client, seeded, session_factory):
     session = session_factory()
     slot = session.get(Slot, seeded["future_slot"].id)
-    slot.duty_name = "Bästkustcupen"  # its profile has an instruction…
+    slot.duty_name = "Bästkustcupen"  # its usual café links an instruction…
+    find_or_create_station(session, "Mölnlycke idrottshall", "Café").document = (
+        "Cafeteria_Instruktion_MIH.pdf"
+    )
     station = find_or_create_station(session, "Mölnlycke idrottshall", "Kiosk")
     slot.station_id = station.id  # …but the station it is linked to has none
     session.commit()
@@ -37,32 +39,12 @@ def test_a_linked_station_without_instruction_links_nothing(client, seeded, sess
     assert _future_row(client, slot)["document_url"] is None
 
 
-def test_migrated_slots_link_what_the_duty_name_linked(app, seeded, session_factory):
-    from duty_web.routes.document_routes import (
-        instruction_url_for_duty,
-        instruction_url_for_slot,
-    )
-
+def test_a_slot_without_a_station_links_nothing(client, seeded, session_factory):
+    """Not even when its duty is known: until an ansvarig places it, the
+    button goes to the document list rather than to a guess."""
     session = session_factory()
-    team = session.get(Team, seeded["team"].id)
-    for duty in ("Cafépass", "Bästkustcupen", "Arena värdskap höst", "Åby Julmarknad"):
-        slot = Slot(
-            team_id=team.id, date=seeded["future_slot"].date,
-            start_time=seeded["future_slot"].start_time, end_time=seeded["future_slot"].end_time,
-            station="", duty_name=duty, venue="",
-        )
-        profile = profile_for(duty)
-        if profile:
-            # What migrate.py does: the profile's station, with its instruction.
-            station = find_or_create_station(session, profile.venue, profile.station)
-            station.document = profile.document
-            slot.station_id = station.id
-        session.add(slot)
+    slot = session.get(Slot, seeded["future_slot"].id)
+    slot.duty_name = "Cafépass"
     session.commit()
-    session = session_factory()
 
-    with app.test_request_context():
-        for slot in session.query(Slot).all():
-            assert instruction_url_for_slot(slot) == instruction_url_for_duty(
-                slot.duty_name, team.slug
-            ), slot.duty_name
+    assert _future_row(client, slot)["document_url"] is None

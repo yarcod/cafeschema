@@ -8,7 +8,6 @@ def test_the_cup_is_staffed_in_molnlycke_idrottshall():
 
     assert profile.venue == "Mölnlycke idrottshall"
     assert profile.station == "Café"
-    assert profile.document == "Cafeteria_Instruktion_MIH.pdf"
 
 
 def test_a_cafepass_is_the_lower_floor_of_arena_b():
@@ -16,7 +15,12 @@ def test_a_cafepass_is_the_lower_floor_of_arena_b():
 
     assert profile.venue == "Wallenstam arena"
     assert profile.station == "Café Arena B, nedre plan"
-    assert profile.document == "Cafeteria_Instruktion_W_Arena_B_nedre_plan.pdf"
+
+
+def test_a_profile_names_a_place_not_an_instruction():
+    """Which instruction a station links is decided under Platser, in the
+    database; a filename in code would only go stale."""
+    assert not hasattr(profile_for("Cafépass"), "document")
 
 
 def test_both_arena_hosting_terms_are_now_called_cafepass():
@@ -31,12 +35,12 @@ def test_a_name_that_was_never_renamed_is_returned_as_it_is():
 
 def test_lookup_ignores_case_and_surrounding_whitespace():
     assert canonical_duty_name("  arena värdskap höst ") == "Cafépass"
-    assert profile_for(" bästkustcupen ").document == "Cafeteria_Instruktion_MIH.pdf"
+    assert profile_for(" bästkustcupen ") == profile_for("Bästkustcupen")
 
 
 def test_a_slot_still_carrying_the_old_name_finds_its_profile():
     """The rename reaches the database by migration, not by re-import, so a
-    database that hasn't been migrated yet still gets the right document."""
+    database that hasn't been migrated yet still finds its station."""
     assert profile_for("Arena värdskap höst") == profile_for("Cafépass")
 
 
