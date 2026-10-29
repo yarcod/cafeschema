@@ -103,6 +103,14 @@ anrop och 1 MB per fil.
 ✎ → **Pass** → **Importera Excel** → välj coachens bemanningsschema (.xlsx) →
 Granska → Genomför. Filen läses i minnet och sparas inte.
 
+Utan coachens fil: **Ladda ned Excel-mall** bredvid Importera Excel ger en tom
+mall i samma format — Aktivitet, Datum, Tid, Person 1–3, en rad per pass. Den
+byggs för laget vid nedladdning: Person-kolumnerna listar lagets barn (utom de
+som aldrig får pass) och Aktivitet de aktiviteter appen känner till, så att
+granskningen har färre namn och platser att fråga om. Annat går att skriva in.
+Fliken *Så fyller du i* har reglerna och ett exempel; importen läser bara
+fliken *Schema*.
+
 Importen är en ändringslista, inte en ersättning:
 
 - Ett pass som är oförändrat behåller sitt id och sina byten, också byten som

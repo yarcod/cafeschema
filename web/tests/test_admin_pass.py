@@ -130,3 +130,56 @@ def test_another_teams_slots_are_not_found(client, admins, api_keys):
     response = client.get("/admin/api/slots?team=p13", headers=bearer(api_keys["ansvarig"]))
 
     assert response.status_code == 404
+
+
+def test_pass_offers_the_excel_template_next_to_the_import(client, admins):
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/pass").get_data(as_text=True)
+
+    assert "/admin/f14-bla/pass/mall.xlsx" in page
+
+
+def test_the_template_lists_the_teams_children_but_not_the_exempt(
+    client, admins, seeded, session_factory
+):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from duty_web.models import Player
+
+    session = session_factory()
+    session.add(Player(name="Ledarbarn Exempel", team_id=seeded["team"].id, exempt=True))
+    session.commit()
+    login(client, admins["ansvarig"])
+
+    response = client.get("/admin/f14-bla/pass/mall.xlsx")
+
+    assert response.status_code == 200
+    assert "attachment" in response.headers["Content-Disposition"]
+    assert response.headers["Cache-Control"] == "no-store"
+    lists = load_workbook(BytesIO(response.data))["Listor"]
+    children = [c.value for c in lists["A"] if c.value]
+    activities = [c.value for c in lists["B"] if c.value]
+    assert "Tova Exempel" in children
+    assert "Ledarbarn Exempel" not in children
+    assert "Nils Främling" not in children  # P13's child
+    assert children == sorted(children)
+    # Known activities, and the team's own under their current names.
+    assert {"Cafépass", "Bästkustcupen"} <= set(activities)
+    assert "Arena värdskap" in activities
+
+
+def test_the_template_is_for_the_teams_admins_only(client, admins):
+    login(client, admins["parent"])
+
+    assert client.get("/admin/f14-bla/pass/mall.xlsx").status_code == 404
+
+
+def test_the_import_page_points_to_the_template(client, admins):
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/do/schedule.import").get_data(as_text=True)
+
+    assert "/admin/f14-bla/pass/mall.xlsx" in page

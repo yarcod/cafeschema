@@ -36,6 +36,7 @@
 <div class="inline-form">
   <a class="btn btn-primary" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='slots.create') }}">+ Lägg till pass</a>
   <a class="btn" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='schedule.import') }}">Importera Excel</a>
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_template', slug=ctx.team.slug) }}">Ladda ned Excel-mall</a>
   {% if include_past %}
   <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug) }}">Dölj tidigare</a>
   {% else %}

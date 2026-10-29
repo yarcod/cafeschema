@@ -5,7 +5,18 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 
-from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from io import BytesIO
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 from flask_login import current_user, login_required
 from markupsafe import Markup
 from sqlalchemy import func
@@ -21,8 +32,10 @@ from ..admin.plan_tokens import PlanTokenError, read_plan_token
 from ..admin.slot_ops import pending_slot_ids
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
-from ..models import ApiKey, Person, Slot, Venue
+from ..duties import DUTY_PROFILES, canonical_duty_name
+from ..models import ApiKey, Person, Player, Slot, Venue
 from ..places import linkable_documents, rank_documents
+from ..schedule_template import build_template
 from ..session_scope import get_session as _session
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -119,6 +132,27 @@ def pass_tab(slug: str):
         open_seats=sum(1 for slot in everything if slot.player_id is None),
         swapping=pending_slot_ids(session, [slot.id for slot in everything]),
         include_past=include_past, done=request.args.get("klart"),
+    )
+
+
+@admin_bp.route("/<slug>/pass/mall.xlsx")
+@login_required
+def pass_template(slug: str):
+    """A blank season workbook for Importera Excel, with this team's children
+    and the activities the app knows offered as dropdowns."""
+    ctx = _context(slug)
+    session = _session()
+    players = [
+        name for (name,) in session.query(Player.name)
+        .filter(Player.team_id == ctx.team.id, Player.exempt.is_(False))
+        .order_by(Player.name)
+    ]
+    duties = session.query(Slot.duty_name).filter(Slot.team_id == ctx.team.id).distinct()
+    activities = {canonical_duty_name(name) for (name,) in duties} | set(DUTY_PROFILES)
+    data = build_template(players, sorted(a for a in activities if a))
+    return send_file(
+        BytesIO(data), as_attachment=True, download_name=f"passmall-{ctx.team.slug}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
