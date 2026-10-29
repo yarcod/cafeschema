@@ -1,7 +1,7 @@
 # Admin interface — design
 
 **Date:** 2026-10-22
-**Status:** Approved design; plans 1 and 2 implemented
+**Status:** Approved design; plans 1–3 implemented
 **Repo:** `360-mailer`
 **Package:** `web` (`duty_web`)
 

@@ -5,9 +5,10 @@ höst"/"vinter", no station, and no venue at all for the cup. After: both
 arena terms are "Cafépass", and every slot says which building and which
 café, per DUTY_PROFILES in duty_web/duties.py.
 
-Deliberately an UPDATE rather than a re-import: `just schedule-push` deletes
-every slot (seed.py), which would revert accepted swaps and orphan the
-pending ones. Nothing here touches ownership.
+Deliberately an UPDATE of the slots already there: `just schedule-push`
+only touches the slots of the activities in the file, so duties renamed on
+existing slots are written here, via `just duties-push`.
+Nothing here touches ownership.
 
 Runs against a database file, either on the Fly machine (via
 `just duties-push`) or on a downloaded copy for a rehearsal:

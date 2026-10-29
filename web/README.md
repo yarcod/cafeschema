@@ -250,7 +250,7 @@ Båda visar Granska och frågar innan de genomför. Kör `roster-push` före
 standardfil, så att ett annat lags körning aldrig importerar F15:s fil.
 
 Importen är en ändringslista, inte en ersättning (se *Coachens Excel*): pass
-som inte längre finns i filen tas bort för det laget, andra lags pass rörs inte.
+som inte längre finns i filen (inom filens aktiviteter och säsonger) tas bort för det laget, andra lags pass rörs inte.
 Föräldrarna själva behålls, så ingen blir utloggad och ingens inställningar
 försvinner.
 
@@ -287,8 +287,8 @@ Laglistan kommer från 360Players medlemsexport (.csv), som `roster-push` eller
 
 - **Lägga till en familj** — lägg till barnet och föräldern i 360Player och kör
   `just roster-push <slug> <fil>` med en ny medlemsexport.
-- **Två föräldrar i samma familj** — den som står först får passen; den andra
-  kan alltid vidarebefordra inloggningslänken.
+- **Två föräldrar i samma familj** — passet tillhör barnet, så båda föräldrarna
+  ser det, kan byta det och får mejlen om det (om de inte slagit av dem).
 - **Namnet stavas olika i schemat och laglistan** — granskningen frågar *Vem är
   'X'?* och sparar svaret. Utan svar blir passet *Ledigt*.
 

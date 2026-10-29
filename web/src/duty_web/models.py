@@ -52,7 +52,7 @@ class Person(Base):
 class Player(Base):
     """A child on a team. Duties are assigned to the player, not a parent.
 
-    The roster (data/f15_parent_mailing_list.csv, exported from 360Player)
+    The roster (360Player's members export, read by roster.import)
     is authoritative for who exists and who their parents are; the schedule
     only says which player staffs which shift.
     """

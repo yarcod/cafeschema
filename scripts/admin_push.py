@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -66,12 +67,32 @@ def multipart(fields: dict[str, str], file_field: str, path: Path) -> tuple[byte
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect would re-send the Authorization header to wherever Location
+    points. Refusing it turns the 3xx into an HTTPError instead."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+OPENER = urllib.request.build_opener(_NoRedirect)
+LOCAL_HOSTS = ("localhost", "127.0.0.1")
+
+
+def check_base_url(base_url: str) -> str:
+    """The key goes in a header: only over https, or to this machine."""
+    parts = urllib.parse.urlsplit(base_url)
+    if parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in LOCAL_HOSTS):
+        return base_url.rstrip("/")
+    raise PushError("ADMIN_BASE_URL måste vara https (eller localhost): nyckeln skickas inte okrypterad.")
+
+
 def http_send(method: str, url: str, headers: dict[str, str], body: bytes) -> tuple[int, dict]:
     # Cloudflare in front of the app refuses urllib's default User-Agent (error 1010).
     headers = {"User-Agent": USER_AGENT, **headers}
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with OPENER.open(request, timeout=60) as response:
             return response.status, json.loads(response.read() or b"{}")
     except urllib.error.HTTPError as exc:
         try:
@@ -89,6 +110,8 @@ def _check(status: int, payload: dict) -> None:
         raise PushError("\n".join(f"{field}: {message}" for field, message in payload["errors"].items()))
     if status == 409:
         raise PushError("Något ändrades mellan granskning och genomförande. Inget ändrades; kör igen.")
+    if status == 403 and not payload:
+        raise PushError("Servern eller Cloudflare nekade anropet (403). Inget ändrades.")
     if status in (401, 403, 404):
         raise PushError("Nyckeln nekades, eller så har den inget lag med det namnet.")
     if status == 429:
@@ -157,7 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__, file=sys.stderr)
         return 64
     try:
-        return push(*args, key=read_key())
+        base_url = check_base_url(BASE_URL)
+        return push(*args, key=read_key(), base_url=base_url)
     except PushError as exc:
         print(exc, file=sys.stderr)
         return 1

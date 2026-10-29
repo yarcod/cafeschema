@@ -2,7 +2,10 @@
 against the test app. Loaded off disk like the migration scripts."""
 
 import importlib.util
+import http.server
 import subprocess
+import threading
+import types
 from pathlib import Path
 
 import pytest
@@ -210,10 +213,69 @@ def test_http_send_sets_the_user_agent(admin_push, monkeypatch):
         seen.append(request)
         return Response()
 
-    monkeypatch.setattr(admin_push.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(admin_push, "OPENER", types.SimpleNamespace(open=urlopen))
 
     admin_push.http_send("POST", "http://test/x", {"Authorization": "Bearer k"}, b"")
 
     agent = seen[0].get_header("User-agent")
     assert agent and not agent.startswith("Python-urllib")
     assert seen[0].get_header("Authorization") == "Bearer k"
+
+
+def _serve(handler):
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_http_send_does_not_follow_a_redirect(admin_push):
+    elsewhere = []
+
+    class Elsewhere(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            elsewhere.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+        log_message = lambda *args: None
+
+    target = _serve(Elsewhere)
+
+    class Redirect(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{target.server_port}/x")
+            self.end_headers()
+        log_message = lambda *args: None
+
+    origin = _serve(Redirect)
+    try:
+        status, payload = admin_push.http_send(
+            "POST", f"http://127.0.0.1:{origin.server_port}/x", {"Authorization": "Bearer k"}, b"")
+    finally:
+        origin.shutdown()
+        target.shutdown()
+
+    assert (status, payload) == (302, {})
+    assert elsewhere == []
+    with pytest.raises(admin_push.PushError, match=r"Oväntat svar från servern \(302\)"):
+        admin_push._check(status, payload)
+
+
+@pytest.mark.parametrize("url", ["http://innebandy.edholm.cc", "ftp://localhost", "http://localhost.evil.se"])
+def test_a_base_url_that_is_not_https_or_local_is_refused(admin_push, url):
+    with pytest.raises(admin_push.PushError, match="https"):
+        admin_push.check_base_url(url)
+
+
+@pytest.mark.parametrize("url", ["https://innebandy.edholm.cc/", "http://localhost:5000", "http://127.0.0.1:8000"])
+def test_https_and_local_base_urls_are_accepted(admin_push, url):
+    assert admin_push.check_base_url(url) == url.rstrip("/")
+
+
+def test_a_403_without_a_json_body_blames_the_server_or_cloudflare(admin_push):
+    with pytest.raises(admin_push.PushError, match=r"Servern eller Cloudflare nekade anropet \(403\)\. Inget ändrades\."):
+        admin_push._check(403, {})
+    with pytest.raises(admin_push.PushError, match="Nyckeln nekades"):
+        admin_push._check(403, {"error": "nej"})
+    with pytest.raises(admin_push.PushError, match="Nyckeln nekades"):
+        admin_push._check(401, {})
