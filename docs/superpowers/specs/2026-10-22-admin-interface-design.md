@@ -498,9 +498,12 @@ Each step deploys on its own.
 - Validation errors are per field:
   `400 {"errors": {"rows[2].end": "Sluttiden måste vara efter starttiden"}}`.
   In HTML they appear next to the field.
-- Mail (cancelled swaps, new ansvarig) is sent after commit. A failed mail is
+- Mail (cancelled swaps, a moved shift, new ansvarig) is sent after commit. A failed mail is
   logged and doesn't roll back the change. Granska said beforehand who would
   get mail.
+  A moved shift is a dated seat that keeps its player and gets another day,
+  time or station. The family gets one mail, which also says if a pending swap
+  was cancelled; a first date mails nobody.
 
 ## Deliberately not built
 

@@ -99,6 +99,18 @@ def send_swap_cancelled(
     _send_each(emails, "Ett bytesförslag ställdes in", body)
 
 
+def send_shift_moved(
+    emails: Sequence[str], *, before: str, after: str, swap_cancelled: bool = False,
+    link: str | None = None,
+) -> None:
+    body = f"Lagets ansvariga har ändrat ert pass.\n\nFöre: {before}\nNu: {after}"
+    if swap_cancelled:
+        body += "\n\nEtt bytesförslag om passet ställdes in, eftersom passet ändrades."
+    if link:
+        body += f"\n\nErt schema:\n{link}"
+    _send_each(emails, "Ert pass har ändrats", body)
+
+
 def send_admin_granted(email: str, team_name: str, link: str) -> None:
     _send(
         email,

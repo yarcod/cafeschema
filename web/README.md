@@ -62,7 +62,8 @@ arbetsbänken på `/admin/<lag>/`:
   Bocka i lediga platser och tryck **Bemanna valda platser**: den med minst
   pass den här säsongen går först, syskon hamnar gärna på samma pass, och
   slumpen avgör bara mellan lika. Ledarnas barn får aldrig pass. **Ändra** och
-  **Ta bort** gäller ett pass i taget. **Importera Excel** tar coachens fil
+  **Ta bort** gäller ett pass i taget. Flyttar du ett pass med datum till en
+  annan dag, tid eller station får familjen ett mejl; granskningen säger vilka. **Importera Excel** tar coachens fil
   som den är (se nedan).
 - **Lag & ansvariga**: laglistan från 360Player, ledarna och vilka som är
   ansvariga. Varje ansvarig kan göra en annan förälder i laget till ansvarig.
@@ -106,7 +107,8 @@ Importen är en ändringslista, inte en ersättning:
 - Ett pass som får sitt datum behåller sina byten.
 - Har du ändrat datum, tid eller station på ett importerat pass under Pass
   sätter nästa import tillbaka det filen säger. Passet behåller sitt id och
-  sin spelare, men väntande byten ställs in.
+  sin spelare, men väntande byten ställs in. Familjen får ett mejl om att
+  passet ändrats.
 - Ett pass som inte längre finns i filen tas bort.
 - Bara aktiviteter som står i filen, och bara säsongerna filen gäller, rörs.
   Pass före i dag och pass ni lagt till under Pass ändras aldrig.

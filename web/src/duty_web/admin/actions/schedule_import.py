@@ -66,6 +66,7 @@ from ..slot_ops import (
     day_label,
     owner_name,
     parse_clock,
+    plan_shift_notices,
     plan_swap_cancellations,
     shift_label,
     slot_basis,
@@ -668,7 +669,9 @@ class ImportSchedule(Action):
             )
 
         removed = [slot.id for slot in slots]
-        plan_swap_cancellations(session, plan, changed=changed, deleted=removed)
+        matched = {slot.id: slot for slot, _, _ in pairs}
+        mailed = plan_shift_notices(session, plan, [(matched[i], fields) for i, fields in edits])
+        plan_swap_cancellations(session, plan, changed=changed, deleted=removed, mailed=mailed)
         # Every day an edit, an add or a removal lands on, before and after.
         for day in touched:
             if day is None:

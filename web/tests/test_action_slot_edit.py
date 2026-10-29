@@ -68,6 +68,13 @@ def mails(monkeypatch):
     return sent
 
 
+@pytest.fixture
+def moved(monkeypatch):
+    sent = []
+    monkeypatch.setattr(slot_ops, "send_shift_moved", lambda emails, **kw: sent.append((sorted(emails), kw)))
+    return sent
+
+
 def test_an_undated_shift_gets_its_date(app, session_factory, admins, seeded):
     ids = _undated(session_factory, seeded["team"].id)
 
@@ -307,3 +314,53 @@ def test_both_doors_plan_the_same(client, admins, api_keys, csrf_token, seeded, 
 
     assert all(c["summary"] in page and c["detail"] in page for c in api["changes"])
     assert all(c["summary"] in gone for c in removal["changes"])
+
+
+def test_a_moved_shift_mails_its_family(app, session_factory, admins, seeded, moved):
+    seat = seeded["future_slot"]
+
+    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat.id],
+                start="17:00", end="20:00")
+
+    (emails, kw), = moved
+    assert emails and all("@" in e for e in emails)
+    assert kw["before"].endswith("18:00–21:00 Arena värdskap · Cafe")
+    assert kw["after"].endswith("17:00–20:00 Arena värdskap · Cafe")
+    assert kw["swap_cancelled"] is False
+    assert any(w.startswith("Tova Exempel får ett mejl om att passet flyttas:") for w in plan.warnings)
+    assert not any("@" in w for w in plan.warnings)
+
+
+def test_a_moved_shift_with_a_swap_is_one_mail_per_family(
+    app, session_factory, admins, seeded, second_team, mails, moved
+):
+    _swap(session_factory, seeded, second_team)
+
+    _run(app, session_factory, admins["ansvarig"], "slot.update",
+         slot_ids=[seeded["future_slot"].id], start="17:00", end="20:00")
+
+    assert [kw["swap_cancelled"] for _, kw in moved] == [True]
+    assert len(mails) == 1   # only the neighbour's family gets the cancel mail
+
+
+def test_no_move_mail_for_a_note_a_first_date_or_a_family_without_mail(
+    app, session_factory, admins, seeded, moved
+):
+    seat = seeded["future_slot"].id
+    _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], note="Nycklar")
+    undated = _undated(session_factory, seeded["team"].id, count=1)
+    session = session_factory()
+    session.get(Slot, undated[0]).player_id = seeded["player"].id   # a held seat, first date
+    session.commit()
+    _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=undated, day="2027-02-05")
+    ida = _ida(session_factory, seeded)
+    _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], player_id=ida)
+    session = session_factory()
+    for parent in session.get(Slot, seat).player.parents:
+        parent.email_notifications = False
+    session.commit()
+
+    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], start="17:00")
+
+    assert moved == []
+    assert not any("får ett mejl om att passet flyttas" in w for w in plan.warnings)

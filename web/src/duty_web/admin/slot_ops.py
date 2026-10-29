@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..clock import utcnow
 from ..dates import short_date_sv, weekday_sv
 from ..models import ORIGIN_IMPORT, Player, Slot, SwapRequest
-from ..notifications import send_swap_cancelled
+from ..notifications import send_shift_moved, send_swap_cancelled
 from ..roster import notifiable_emails
 from .errors import ValidationError
 
@@ -117,8 +117,47 @@ def pending_slot_ids(session: Session, slot_ids: Iterable[int]) -> set[int]:
     return found
 
 
+def plan_shift_notices(session: Session, plan, edits: Iterable[tuple[Slot, dict]]) -> set[int]:
+    """Mail the family whose dated shift gets another day, time or station.
+
+    Only a seat that keeps its player: a new owner is the swap mail's
+    business, and a first date is like a new shift, which nobody is mailed
+    about (the reminder goes out before it). One warning per seat names the
+    player, so Granska says beforehand who gets mail. Returns the slots
+    mailed: their cancelled swap is in the same mail, so call this before
+    plan_swap_cancellations and pass the result as `mailed`.
+    """
+    moves = [
+        (slot, fields) for slot, fields in edits
+        if slot.player_id is not None and slot.date is not None
+        and fields.get("player_id", slot.player_id) == slot.player_id
+    ]
+    if not moves:
+        return set()
+    pending = pending_slot_ids(session, [slot.id for slot, _ in moves])
+    link = url_for("schedule.mine", _external=True)
+    mailed: set[int] = set()
+    for slot, fields in moves:
+        before = slot_label(slot)
+        after = shift_label(
+            fields.get("date", slot.date), fields.get("start_time", slot.start_time),
+            fields.get("end_time", slot.end_time), slot.duty_name, fields.get("station", slot.station),
+        )
+        emails = notifiable_emails(session, slot)
+        if after == before or not emails:
+            continue
+        plan.warnings.append(f"{slot.player.name} får ett mejl om att passet flyttas: {before} → {after}.")
+        plan.after_commit.append(partial(
+            send_shift_moved, emails, before=before, after=after,
+            swap_cancelled=slot.id in pending, link=link,
+        ))
+        mailed.add(slot.id)
+    return mailed
+
+
 def plan_swap_cancellations(
-    session: Session, plan, *, changed: Iterable[int] = (), deleted: Iterable[int] = ()
+    session: Session, plan, *, changed: Iterable[int] = (), deleted: Iterable[int] = (),
+    mailed: Iterable[int] = (),
 ) -> None:
     """The pending swaps on slots this plan changes or removes.
 
@@ -127,9 +166,10 @@ def plan_swap_cancellations(
     are marked cancelled. A removed slot's swap rows, in any status, are
     deleted with it, or the foreign key refuses the delete. After commit
     each family gets one mail. Call this before adding the action's own slot
-    writes: its write must run first.
+    writes: its write must run first. A slot in `mailed` gets no cancel mail:
+    plan_shift_notices already told that family.
     """
-    changed, deleted = set(changed), set(deleted)
+    changed, deleted, mailed = set(changed), set(deleted), set(mailed)
     touched = sorted(changed | deleted)
     if touched:
         every = (
@@ -152,6 +192,8 @@ def plan_swap_cancellations(
             "Båda familjerna får ett mejl."
         )
         for slot in (proposer, target):
+            if slot.id in mailed:
+                continue
             emails = notifiable_emails(session, slot)
             if emails:
                 plan.after_commit.append(

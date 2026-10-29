@@ -51,6 +51,13 @@ def mails(monkeypatch):
     return sent
 
 
+@pytest.fixture
+def moved(monkeypatch):
+    sent = []
+    monkeypatch.setattr(slot_ops, "send_shift_moved", lambda emails, **kw: sent.append((sorted(emails), kw)))
+    return sent
+
+
 def _rows(*rows):
     return read_schedule(coach_workbook(list(rows)))
 
@@ -518,7 +525,7 @@ def test_an_answered_place_is_saved_and_the_same_file_then_changes_nothing(
 
 
 def test_correcting_a_saved_place_moves_the_seat_and_cancels_its_pending_swap(
-    app, session_factory, admins, seeded, second_team, arena, mails
+    app, session_factory, admins, seeded, second_team, arena, mails, moved
 ):
     from duty_web.swaps import accept_swap, propose_swap
 
@@ -552,7 +559,9 @@ def test_correcting_a_saved_place_moves_the_seat_and_cancels_its_pending_swap(
         "cancelled", "accepted"
     )
     assert session.query(ActivityStation).one().station_id == kiosk
-    assert len(mails) == 2
+    assert len(mails) == 1   # Tova's family; the seat's own family gets the move mail instead
+    (_, kw), = moved
+    assert kw["swap_cancelled"] is True and kw["after"].endswith("Städning · Kiosken")
 
 
 def test_an_answer_that_changes_no_seat_says_it_is_not_saved(
@@ -794,7 +803,7 @@ def test_answering_a_held_spelling_with_its_player_only_changes_the_record(
 
 
 def test_a_seat_edited_under_pass_keeps_its_id_and_accepted_swap(
-    app, session_factory, admins, seeded, second_team, arena, mails
+    app, session_factory, admins, seeded, second_team, arena, mails, moved
 ):
     ida = _ida(session_factory, seeded)
     _run(app, session_factory, admins["ansvarig"], _rows(*SEASON))
@@ -816,7 +825,9 @@ def test_a_seat_edited_under_pass_keeps_its_id_and_accepted_swap(
     assert (session.get(SwapRequest, accepted).status, session.get(SwapRequest, pending).status) == (
         "accepted", "cancelled"
     )
-    assert len(mails) == 2
+    assert len(mails) == 1   # the neighbour's family; Ida's family gets the move mail instead
+    (_, kw), = moved
+    assert kw["swap_cancelled"] is True and "12:00–16:00" in kw["before"] and "11:30–16:00" in kw["after"]
 
 
 def test_a_date_set_under_pass_is_put_back_by_the_file_as_an_update(
@@ -890,3 +901,12 @@ def test_an_api_apply_that_changes_nothing_saves_no_answer(client, admins, api_k
 
     assert reviewed["changes"] == [] and applied.get_json()["applied"] is True
     assert session_factory().query(NameAlias).count() == 0
+
+
+def test_dating_a_shift_from_the_file_mails_nobody(app, session_factory, admins, seeded, arena, moved):
+    _run(app, session_factory, admins["ansvarig"], _rows(*SEASON))
+    dated = [list(SEASON[0]), [None, "Cafépass", datetime(2027, 2, 5), "18:00-21:00", "Tova Exempel", None, None]]
+
+    _run(app, session_factory, admins["ansvarig"], _rows(*dated))
+
+    assert moved == []

@@ -22,6 +22,7 @@ from ..slot_ops import (
     owner_fields,
     owner_name,
     parse_clock,
+    plan_shift_notices,
     plan_swap_cancellations,
     slot_basis,
     slot_label,
@@ -200,7 +201,9 @@ class UpdateSlots(Action):
             if busy is not None:
                 plan.warnings.append(f"{session.get(Player, owner).name} har redan ett pass {day_label(when)}.")
 
-        plan_swap_cancellations(session, plan, changed=changed)
+        by_id = {slot.id: slot for slot in slots}
+        mailed = plan_shift_notices(session, plan, [(by_id[i], fields) for i, fields in edits])
+        plan_swap_cancellations(session, plan, changed=changed, mailed=mailed)
 
         def write(s):
             for slot_id, fields in edits:
