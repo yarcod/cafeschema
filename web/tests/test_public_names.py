@@ -3,15 +3,18 @@ the address is what ended up in the name column."""
 
 from datetime import date, time
 
+from duty_web.admin.actions import REGISTRY
+from duty_web.admin.executor import apply_plan, dry_run
+from duty_web.admin.permissions import admin_context
 from duty_web.models import Person, Slot
 from duty_web.roster import (
     NAMELESS,
-    import_roster,
     parent_names_of_slot,
     public_name,
 )
 
 from .conftest import make_family
+from .test_members_csv import export
 
 
 def _login(client, person):
@@ -26,17 +29,15 @@ def test_public_name_hides_empty_names_and_addresses():
     assert public_name(Person(name="a@x.se", email="a@x.se")) == NAMELESS
 
 
-def test_an_import_row_without_a_name_stores_no_name(session_factory, seeded, tmp_path):
-    csv = tmp_path / "f.csv"
-    csv.write_text(
-        "parent_name,parent_email,children_on_team\n,ny@exempel.se,Nils Ny\n",
-        encoding="utf-8",
-    )
+def test_an_import_row_without_a_name_stores_no_name(session_factory, admins):
     session = session_factory()
-    import_roster(session, csv, team_id=seeded["team"].id)
-    session.commit()
+    ctx = admin_context(session, session.get(Person, admins["ansvarig"].id), "f14-bla")
+    action = REGISTRY["roster.import"]
+    rows = export("Nils,Ny,,,Okänd Förälder,", ",,ny@exempel.se,,,Nils Ny").decode("utf-8")
+    _, token = dry_run(session, ctx, action, action.parse({"csv": rows}, {}), secret_key="test-secret")
+    apply_plan(session, ctx, token, secret_key="test-secret", via="webb")
 
-    person = session.query(Person).filter_by(email="ny@exempel.se").one()
+    person = session_factory().query(Person).filter_by(email="ny@exempel.se").one()
     assert person.name == ""
 
 
