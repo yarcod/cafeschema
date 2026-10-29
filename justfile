@@ -45,15 +45,13 @@ team-add slug name venue="Wallenstam arena":
     printf 'put scripts/remote_team_add.py /tmp/remote_team_add.py\n' | fly ssh sftp shell -a duty-swap-webapp
     fly ssh console -a duty-swap-webapp -C "python /tmp/remote_team_add.py {{slug}} '{{name}}' '{{venue}}'"
 
-# Sync a team's players and parents from its 360Player contact list (additive; run before schedule-push)
-roster-push team="f15" file=("data/" + team + "_parent_mailing_list.csv"):
-    printf 'put %s /tmp/roster.csv\nput scripts/remote_roster_import.py /tmp/remote_roster_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_roster_import.py {{team}}"
+# Sync a team's players and parents from 360Player (Truppen → Exportera): Granska, then Genomför
+roster-push team file:
+    python3 -I scripts/admin_push.py roster.import '{{team}}' "{{file}}"
 
-# Import a built seed file into the deployed app (replaces that team's slots only)
+# Import the coach's Excel into a team's shifts: Granska, then Genomför. Questions are answered in the web
 schedule-push team file:
-    printf 'put %s /tmp/seed.xlsx\nput scripts/remote_import.py /tmp/remote_import.py\n' "{{file}}" | fly ssh sftp shell -a duty-swap-webapp
-    fly ssh console -a duty-swap-webapp -C "python /tmp/remote_import.py {{team}}"
+    python3 -I scripts/admin_push.py schedule.import '{{team}}' "{{file}}"
 
 # Rename duties and fill in venue/café on the slots already imported (idempotent)
 duties-push:
