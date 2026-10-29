@@ -190,9 +190,10 @@ sedan under ✎ → Platser:
 | Cafépass Arena A | Wallenstam arena | Café Arena A, övre plan | `Cafeteria_Instruktion_W_Arena_A_övre_plan.pdf` |
 
 Ett pass utan koppling — eller vars fil inte är uppladdad — länkar till listan i
-stället, så knappen aldrig leder till en 404. Tabellen i `duties.py` är bara fröet: nya platser och
-instruktioner läggs in under Platser, och `just duties-push` sätter plats och
-café på de pass som redan är importerade.
+stället, så knappen aldrig leder till en 404. Tabellen i `duties.py` sås in vid första
+migreringen och gäller sedan bara som reserv för pass och aktiviteter utan
+station. Nya platser och instruktioner läggs in under Platser, och
+`just duties-push` sätter plats och café på de pass som redan är importerade.
 
 ## Påminnelsemail
 
@@ -313,7 +314,7 @@ just test-fixture-remove min.adress@exempel.se   # tar bort föräldern, passet 
 ```
 
 Testpasset syns för alla i **Hela laget**, så ta bort det när det är avklarat.
-Det försvinner också vid nästa `schedule-push` för laget, om passet inte står i filen.
+En import rör det inte (bara aktiviteter som står i filen ändras); ta bort det med `just test-fixture-remove`.
 
 ## Utveckling
 

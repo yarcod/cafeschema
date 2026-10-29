@@ -5,10 +5,11 @@ arena. It doesn't say which café inside that building, and it doesn't say
 which instruction to read before the shift. That is the team's own knowledge,
 it changes about once a season.
 
-This table is only the seed. The migration creates venues, stations and their
-instructions from DUTY_PROFILES the first time it runs (while the stations
-table is empty); after that the places live in the database (✎ → Platser)
-and edits here change nothing for existing data. A document is a bare
+The migration creates venues, stations and their instructions from
+DUTY_PROFILES the first time it runs (while the stations table is empty);
+after that the places live in the database (✎ → Platser). The table stays as
+the fallback for slots and activities with no station: a schedule import,
+document lookup and the migration's linking still consult it. A document is a bare
 filename (Slot has no column for it): the document routes look for it in the slot's team folder first and then among the
 club's shared documents, so a team can have its own version of an
 instruction without a profile of its own.
