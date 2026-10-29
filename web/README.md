@@ -77,6 +77,12 @@ arbetsbänken på `/admin/<lag>/`:
 Allt som ändrar något visas först i **Granska** (+ nytt, ~ ändrat, − borttaget).
 Ingenting händer förrän du trycker **Genomför**.
 
+Flyttar ändringen pass med datum finns rutan **Skicka inga mejl om flyttade
+pass** i granskningen. Bra medan schemat fortfarande flyttas runt: ändringarna
+blir desamma, bara flyttmejlen uteblir. Ställs ett väntande byte in får båda
+familjerna ändå sitt mejl, så att ingen väntar på ett svar som aldrig kommer.
+Rutan är urbockad varje gång, så nästa ändring mejlar som vanligt.
+
 ### Laglistan från 360Player
 
 1. Öppna laget i 360Player → **Truppen** → **Exportera** (en `…-members.csv`).

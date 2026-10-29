@@ -51,6 +51,12 @@ class Plan:
     writes: list[Callable[[Session], None]] = field(
         default_factory=list, repr=False, compare=False
     )
+    # Whether families get mail about a moved shift; None when the action
+    # never moves one. Cancelled swaps are mailed either way. The warnings
+    # say which, so it stays out of the digest.
+    notify: bool | None = field(default=None, compare=False)
+    # The move mails the plan sends, or would send with notify on.
+    move_mails: int = field(default=0, compare=False)
     # Run after commit (mail, mostly). A failure is logged, never rolled back.
     after_commit: list[Callable[[], None]] = field(
         default_factory=list, repr=False, compare=False
@@ -119,6 +125,11 @@ class Action:
 
 
 REGISTRY: dict[str, Action] = {}
+
+
+def mutable(action: Action) -> bool:
+    """Granska can turn the action's move mail off: its Input has notify."""
+    return any(f.name == "notify" for f in dataclasses.fields(action.Input))
 
 
 def register(cls: type[Action]) -> type[Action]:

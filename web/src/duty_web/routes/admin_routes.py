@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
@@ -13,7 +14,7 @@ from ..admin import ratelimit
 from ..agenda import group_days, group_shifts
 from ..admin.api_keys import revoke_api_key
 from ..admin.actions import REGISTRY
-from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_schema
+from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_schema, mutable
 from ..admin.executor import apply_plan, dry_run, preview, scope_allows
 from ..admin.permissions import AdminContext, admin_context, admin_teams
 from ..admin.plan_tokens import PlanTokenError, read_plan_token
@@ -199,7 +200,7 @@ def genomfor(slug: str):
 @admin_bp.route("/<slug>/omplanera", methods=["POST"])
 @login_required
 def omplanera(slug: str):
-    """Granska's answers (or Slumpa om): re-plan the reviewed input with them."""
+    """Granska's answers, Slumpa om, or the mail box: re-plan the reviewed input with them."""
     ctx = _context(slug)
     _throttle()
     session = _session()
@@ -211,16 +212,21 @@ def omplanera(slug: str):
             abort(404)
         return render_template("admin/stale.html", ctx=ctx, code=exc.code), exc.status
     action = REGISTRY.get(data["a"])
+    mail_switch = action is not None and mutable(action) and "mail_switch" in request.form
     if (
         action is None
-        or not action.refinable
+        or not (action.refinable or mail_switch)
         or data["p"] != ctx.person.id
         or data["t"] != ctx.team.id
         or not scope_allows(action, ctx)
     ):
         abort(404)
     try:
-        inp = action.refine(action.Input(**data["i"]), request.form)
+        inp = action.Input(**data["i"])
+        if mail_switch:
+            inp = replace(inp, notify=not request.form.get("mute"))
+        else:
+            inp = action.refine(inp, request.form)
         plan, token = dry_run(session, ctx, action, inp, secret_key=secret_key)
     except TypeError:
         abort(400)

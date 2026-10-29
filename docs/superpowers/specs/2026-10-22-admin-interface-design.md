@@ -504,6 +504,12 @@ Each step deploys on its own.
   A moved shift is a dated seat that keeps its player and gets another day,
   time or station. The family gets one mail, which also says if a pending swap
   was cancelled; a first date mails nobody.
+  While a schedule is still being shuffled, Granska's **Skicka inga mejl om
+  flyttade pass** (`notify: false` for agents) on schedule.import and
+  slot.update re-plans without the move mails: the changes are the same, and
+  the warnings say who would have been mailed. A cancelled swap is still mailed
+  to both families, the moved one included, so nobody waits on an answer that
+  won't come. The box starts unticked on every new review.
 
 ## Deliberately not built
 

@@ -29,6 +29,16 @@
   <button type="submit" class="btn">Uppdatera granskningen</button>
 </form>
 {% endif %}
+{% if plan.notify is not none and (plan.move_mails or not plan.notify) %}
+<form class="card" method="post" action="{{ url_for('admin.omplanera', slug=ctx.team.slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="plan_token" value="{{ plan_token }}">
+  <input type="hidden" name="mail_switch" value="1">
+  <label><input type="checkbox" name="mute" value="1" {{ "checked" if not plan.notify }} onchange="this.form.submit()"> Skicka inga mejl om flyttade pass</label>
+  <span class="hint">Annars går {{ plan.move_mails }} mejl ut. Bra medan schemat fortfarande flyttas runt. Inställda byten mejlas ändå.</span>
+  <noscript><button type="submit" class="btn btn-sm">Uppdatera granskningen</button></noscript>
+</form>
+{% endif %}
 {% if plan.changes %}
 <ul class="diff">
   {% for change in plan.changes %}

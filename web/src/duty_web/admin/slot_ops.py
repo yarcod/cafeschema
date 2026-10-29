@@ -126,7 +126,10 @@ def plan_shift_notices(session: Session, plan, edits: Iterable[tuple[Slot, dict]
     player, so Granska says beforehand who gets mail; seats with the same
     family and the same text (siblings on one shift) share one mail. Returns the slots
     mailed: their cancelled swap is in the same mail, so call this before
-    plan_swap_cancellations and pass the result as `mailed`.
+    plan_swap_cancellations and pass the result as `mailed`. With
+    plan.notify off the warnings say who would have been mailed, nothing is
+    sent, and nothing counts as mailed: a cancelled swap still gets its own
+    mail.
     """
     moves = [
         (slot, fields) for slot, fields in edits
@@ -150,13 +153,17 @@ def plan_shift_notices(session: Session, plan, edits: Iterable[tuple[Slot, dict]
         emails = notifiable_emails(session, slot)
         if after == before or not emails:
             continue
-        plan.warnings.append(f"{slot.player.name} får ett mejl om att passet flyttas: {before} → {after}.")
+        mail = "får ett mejl" if plan.notify is not False else "får inget mejl"
+        plan.warnings.append(f"{slot.player.name} {mail} om att passet flyttas: {before} → {after}.")
         group = groups.setdefault(
             (frozenset(emails), before, after),
             {"emails": emails, "before": before, "after": after, "swap_cancelled": False},
         )
         group["swap_cancelled"] = group["swap_cancelled"] or slot.id in pending
         mailed.add(slot.id)
+    plan.move_mails += len(groups)
+    if plan.notify is False:
+        return set()
     for group in groups.values():
         plan.after_commit.append(partial(
             send_shift_moved, group["emails"], before=group["before"], after=group["after"],

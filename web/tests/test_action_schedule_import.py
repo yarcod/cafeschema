@@ -910,3 +910,29 @@ def test_dating_a_shift_from_the_file_mails_nobody(app, session_factory, admins,
     _run(app, session_factory, admins["ansvarig"], _rows(*dated))
 
     assert moved == []
+
+
+def test_a_muted_import_moves_the_seat_without_a_move_mail(
+    app, session_factory, admins, seeded, arena, mails, moved
+):
+    session = session_factory()
+    kiosk = find_or_create_station(session, "Hindås", "Kiosken").id
+    session.commit()
+    rows = _rows([46, "Städning", SATURDAY, "9-12", "Tova Exempel", None, None])
+    _run(app, session_factory, admins["ansvarig"], rows, stations={"Städning": arena})
+
+    plan = _run(app, session_factory, admins["ansvarig"], rows, stations={"Städning": kiosk}, notify=False)
+
+    assert moved == [] and mails == []
+    assert plan.move_mails == 1
+    assert any(w.startswith("Tova Exempel får inget mejl om att passet flyttas:") for w in plan.warnings)
+    assert session_factory().query(Slot).filter_by(duty_name="Städning").one().station_id == kiosk
+
+
+def test_answers_keep_the_mail_switch_and_the_api_can_mute():
+    action = REGISTRY["schedule.import"]
+    muted = ScheduleImportInput(rows=[{"x": 1}], notify=False)
+
+    assert action.refine(muted, {"name::Elin": "3"}).notify is False
+    assert action.parse({"rows": [{"x": 1}], "notify": False}, {}).notify is False
+    assert action.parse({"rows": [{"x": 1}]}, {}).notify is True

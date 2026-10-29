@@ -73,7 +73,7 @@ from ..slot_ops import (
     slot_label,
     slot_order,
 )
-from .base import Action, Plan, ValidationError, register
+from .base import Action, Plan, ValidationError, _coerce, register
 
 
 def _today() -> date:
@@ -86,6 +86,7 @@ class ScheduleImportInput:
     rows: list[dict]
     names: dict = field(default_factory=dict)      # the file's spelling → player id
     stations: dict = field(default_factory=dict)   # activity → station id
+    notify: bool = True                            # mail families whose shift moves
 
 
 @dataclass(frozen=True)
@@ -445,7 +446,11 @@ class ImportSchedule(Action):
             raise ValidationError({"file": "Välj coachens Excelfil (.xlsx)."})
         if not rows:
             raise ValidationError({"file": "Filen innehåller inga pass."})
-        return ScheduleImportInput(rows=rows, names=names, stations=stations)
+        notify = fields.get("notify")
+        return ScheduleImportInput(
+            rows=rows, names=names, stations=stations,
+            notify=True if notify in (None, "") else _coerce(bool, notify),
+        )
 
     def refine(self, inp, fields):
         names, stations = dict(inp.names), dict(inp.stations)
@@ -508,7 +513,7 @@ class ImportSchedule(Action):
                 and want.station_id == new.id
             )
 
-        plan = Plan()
+        plan = Plan(notify=inp.notify)
         plan.basis.extend(slot_basis(slot) for slot in existing)
         plan.basis.append(["name_aliases", resolve.saved_name_rows])
         plan.basis.append(["activity_stations", resolve.saved_place_rows])

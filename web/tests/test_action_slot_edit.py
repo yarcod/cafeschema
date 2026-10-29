@@ -387,3 +387,72 @@ def test_siblings_on_one_shift_get_one_move_mail(app, session_factory, admins, s
     assert sorted(w.split(" får ")[0] for w in plan.warnings if "får ett mejl om att passet flyttas" in w) == [
         "Tilda Exempel", "Tova Exempel"]
     assert not any("@" in w for w in plan.warnings)
+
+
+def test_a_muted_move_sends_no_move_mail_but_still_mails_the_cancelled_swap(
+    app, session_factory, admins, seeded, second_team, mails, moved
+):
+    swap = _swap(session_factory, seeded, second_team)
+    seat = seeded["future_slot"].id
+
+    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat],
+                start="17:00", end="20:00", notify="0")
+
+    assert moved == []
+    assert len(mails) == 2   # the swap's cancel mail goes to both families, muted or not
+    assert plan.notify is False and plan.move_mails == 1
+    assert any(w.startswith("Tova Exempel får inget mejl om att passet flyttas:") for w in plan.warnings)
+    assert any(w.endswith("Båda familjerna får ett mejl.") for w in plan.warnings)
+    session = session_factory()
+    assert session.get(Slot, seat).start_time == time(17)
+    assert session.get(SwapRequest, swap).status == "cancelled"
+
+
+def _token(body):
+    return re.search(r'name="plan_token" value="([^"]+)"', body).group(1)
+
+
+def test_granskas_box_mutes_the_mail_it_was_about_to_send(
+    client, admins, seeded, csrf_token, session_factory, moved
+):
+    seat = seeded["future_slot"].id
+    login(client, admins["ansvarig"])
+    first = client.post("/admin/f14-bla/do/slot.update", data={
+        "csrf_token": csrf_token(), "slot_ids": [str(seat)], "start": "17:00", "end": "20:00",
+    }).get_data(as_text=True)
+    assert "Skicka inga mejl om flyttade pass" in first and "Annars går 1 mejl ut." in first
+    assert 'name="mute" value="1"  onchange' in first   # not ticked
+
+    muted = client.post("/admin/f14-bla/omplanera", data={
+        "csrf_token": csrf_token(), "plan_token": _token(first), "mail_switch": "1", "mute": "1",
+    }).get_data(as_text=True)
+    assert 'name="mute" value="1" checked' in muted
+    assert "får inget mejl om att passet flyttas" in muted
+    response = client.post("/admin/f14-bla/genomfor", data={
+        "csrf_token": csrf_token(), "plan_token": _token(muted),
+    })
+
+    assert response.status_code == 302
+    assert moved == []
+    assert session_factory().get(Slot, seat).start_time == time(17)
+
+
+def test_no_mail_box_when_nobody_would_be_mailed(client, admins, seeded, csrf_token):
+    login(client, admins["ansvarig"])
+
+    page = client.post("/admin/f14-bla/do/slot.update", data={
+        "csrf_token": csrf_token(), "slot_ids": [str(seeded["future_slot"].id)], "note": "Nycklar",
+    }).get_data(as_text=True)
+
+    assert "Skicka inga mejl" not in page
+
+
+def test_removing_a_shift_offers_no_mail_box(client, admins, seeded, second_team, csrf_token, session_factory):
+    _swap(session_factory, seeded, second_team)
+    login(client, admins["ansvarig"])
+
+    page = client.post("/admin/f14-bla/do/slot.delete", data={
+        "csrf_token": csrf_token(), "slot_ids": [str(seeded["future_slot"].id)],
+    }).get_data(as_text=True)
+
+    assert "Båda familjerna får ett mejl." in page and "Skicka inga mejl" not in page

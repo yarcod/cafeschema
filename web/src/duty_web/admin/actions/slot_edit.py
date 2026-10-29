@@ -5,7 +5,8 @@ becomes a change, so the prefilled form sent back unchanged plans nothing.
 A new player, date, time or station cancels the seats' pending swaps, since
 they describe a shift that no longer exists as offered. Removal deletes the
 seats' swap rows. Granska says so first, and both families get a mail after
-commit.
+commit. A moved shift's family is mailed too, unless Granska's "Skicka inga
+mejl om flyttade pass" is ticked (notify off).
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ class UpdateSlotsInput:
     player_id: int | None = None
     clear_player: bool = False
     note: str | None = None
+    notify: bool = True
 
 
 @dataclass
@@ -138,7 +140,7 @@ class UpdateSlots(Action):
                     raise ValidationError({"player_id": "Spelaren finns inte i laget"})
         note = " ".join(inp.note.split()) if inp.note is not None else None
 
-        plan = Plan()
+        plan = Plan(notify=inp.notify)
         plan.basis.extend(slot_basis(slot) for slot in slots)
         changed: list[int] = []
         edits: list[tuple[int, dict]] = []
