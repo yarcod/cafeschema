@@ -111,7 +111,7 @@ def conflict_of(entry, live: dict[int, Slot], player_ids: set[int]) -> Conflict 
     return Conflict(missing=missing, fields=fields, seat_ids=seat_ids)
 
 
-def _view(slot: Slot) -> SeatView:
+def seat_view(slot: Slot) -> SeatView:
     return SeatView(
         ref=slot.id, slot_id=slot.id, entry_id=None, date=slot.date,
         start_time=slot.start_time, end_time=slot.end_time, duty_name=slot.duty_name,
@@ -160,7 +160,7 @@ def staged_seats(entry, live: dict[int, Slot], stations: dict[int, Station]) -> 
         if slot is None:
             # A deleted seat can't be shown; Granska flags it as missing.
             continue
-        view = _apply_fields(_view(slot), entry, stations)
+        view = _apply_fields(seat_view(slot), entry, stations)
         view.entry_id = entry.id
         # A seat nobody staged keeps following the live Pass: a swap made
         # since staging is no conflict, so the old owner must not reappear.
@@ -185,7 +185,7 @@ def effective_seats(session: Session, team_id: int, *, skip_conflicted: bool = F
         replaced.update(s["slot_id"] for s in entry.seats if s["slot_id"] is not None)
         if entry.kind != PENDING_REMOVE:
             staged.extend(staged_seats(entry, live, stations))
-    untouched = [_view(slot) for slot_id, slot in live.items() if slot_id not in replaced]
+    untouched = [seat_view(slot) for slot_id, slot in live.items() if slot_id not in replaced]
     return untouched + staged
 
 

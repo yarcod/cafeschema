@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
-
 from io import BytesIO
 
 from flask import (
@@ -29,14 +27,14 @@ from ..admin.actions import REGISTRY
 from ..admin.actions.pending_actions import staged_row
 from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_schema, mutable
 from ..admin.executor import apply_plan, dry_run, preview, scope_allows
+from ..admin.pass_rows import pass_view
 from ..admin.pending import pending_count
 from ..admin.permissions import AdminContext, admin_context, admin_teams
 from ..admin.plan_tokens import PlanTokenError, read_plan_token
-from ..admin.slot_ops import pending_slot_ids
 from ..admin.roster_view import roster_groups
 from ..clock import utcnow
 from ..duties import DUTY_PROFILES, canonical_duty_name
-from ..models import ApiKey, Person, Player, Slot, Venue
+from ..models import ApiKey, Person, Player, Slot, Station, Venue
 from ..places import linkable_documents, rank_documents
 from ..schedule_template import build_template
 from ..session_scope import get_session as _session
@@ -120,23 +118,16 @@ def pass_tab(slug: str):
     ctx = _context(slug)
     session = _session()
     include_past = request.args.get("tidigare") == "1"
-    query = session.query(Slot).filter(Slot.team_id == ctx.team.id, Slot.date.isnot(None))
-    if not include_past:
-        query = query.filter(Slot.date >= date.today())
-    dated = query.order_by(Slot.date, Slot.id).all()
-    undated = (
-        session.query(Slot)
-        .filter(Slot.team_id == ctx.team.id, Slot.date.is_(None))
-        .order_by(Slot.duty_name, Slot.id)
-        .all()
-    )
-    everything = dated + undated
+    events = pass_view(session, ctx, include_past=include_past)
+    players = session.query(Player).filter(Player.team_id == ctx.team.id).order_by(Player.name).all()
+    stations = session.query(Station).join(Venue).order_by(Venue.name, Station.name).all()
+    # Klart is Genomför's notice: a saved cell has nothing to announce.
+    done = REGISTRY.get(request.args.get("klart", ""))
     return render_template(
-        "admin/pass.html", ctx=ctx, days=group_days(group_shifts(dated)),
-        undated_shifts=group_shifts(undated),
-        open_seats=sum(1 for slot in everything if slot.player_id is None),
-        swapping=pending_slot_ids(session, [slot.id for slot in everything]),
-        include_past=include_past, done=request.args.get("klart"),
+        "admin/pass.html", ctx=ctx, events=events, pending=pending_count(session, ctx.team.id),
+        players=players, stations=[(s.id, f"{s.name} ({s.venue.name})") for s in stations],
+        open_seats=sum(event["open_seats"] for event in events), include_past=include_past,
+        done=done is not None and not done.immediate,
     )
 
 

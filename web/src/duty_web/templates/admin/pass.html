@@ -1,31 +1,74 @@
 {% extends "admin/base_admin.html" %}
-{% from "_names.html" import slot_person %}
 {% block title %}Pass{% endblock %}
 {% block content %}
-{% macro shift_card(shift, slug, swapping) %}
-<div class="pass-shift">
-  <div class="pass-top">
-    <span class="shift-time">{{ shift.start_time.strftime("%H:%M") }}–{{ shift.end_time.strftime("%H:%M") }}</span>
-    <span class="{{ shift.duty_name|chip_class }}">{{ shift.duty_name }}</span>
-    <span class="pass-place">{{ shift.station }}{% if shift.venue %} · {{ shift.venue }}{% endif %}</span>
-  </div>
-  {% for slot in shift.slots %}
-  <div class="pass-seat">
-    {% if slot.player_id is none %}
-    <label><input type="checkbox" name="slot_ids" value="{{ slot.id }}"> <span class="seat-open">Ledigt</span>{% if slot.child_name %} <span class="hint">({{ slot.child_name }} i schemat)</span>{% endif %}</label>
-    {% else %}
-    <span>{{ slot_person(slot) }}</span>
+{% set slug = ctx.team.slug %}
+{% set edit_url = url_for('admin.do_action', slug=slug, name='pending.edit') %}
+{% set signs = {"edit": "~", "new": "+", "remove": "−"} %}
+
+{# One row per Pass. A table row can't hold a form, so the form sits in the
+   first cell and every input names it with form="…". #}
+{% macro pass_row(row) %}
+{% set fid = row.form_id %}
+{% set gone = row.status == "remove" %}
+{% set off = "disabled" if gone else "" %}
+<tr class="pass-row{{ ' pend' if row.status != 'live' }}{{ ' gone' if gone }}{{ ' flag' if row.conflict }}" data-kind="{{ row.status }}">
+  <td class="c-sign">
+    <form id="{{ fid }}" method="post" action="{{ edit_url }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if row.status == "new" %}
+      <input type="hidden" name="entry_id" value="{{ row.entry_id }}">
+      {% else %}
+      {% for id in row.slot_ids %}<input type="hidden" name="slot_ids" value="{{ id }}">{% endfor %}
+      {% endif %}
+      <noscript><button class="btn btn-sm">Spara</button></noscript>
+    </form>
+    <span class="sign" data-sign>{{ signs.get(row.status, "") }}</span>
+  </td>
+  <td>
+    <span class="cell{{ ' cell-ch' if 'date' in row.changed }}" data-field="date"><input type="date" name="day" form="{{ fid }}" class="admin-input" value="{{ row.date.isoformat() if row.date }}" aria-label="Datum" {{ off }}></span>
+  </td>
+  <td class="c-time">
+    <span class="cell{{ ' cell-ch' if 'start_time' in row.changed }}" data-field="start_time"><input name="start" form="{{ fid }}" class="admin-input time" value="{{ row.start }}" placeholder="09:00" aria-label="Start" inputmode="numeric" autocomplete="off" {{ off }}></span>
+    –
+    <span class="cell{{ ' cell-ch' if 'end_time' in row.changed }}" data-field="end_time"><input name="end" form="{{ fid }}" class="admin-input time" value="{{ row.end }}" placeholder="12:00" aria-label="Slut" inputmode="numeric" autocomplete="off" {{ off }}></span>
+  </td>
+  <td>
+    <span class="cell{{ ' cell-ch' if 'station_id' in row.changed }}" data-field="station_id">
+      <select name="station_id" form="{{ fid }}" class="admin-input" aria-label="Plats" {{ off }}>
+        <option value="">Välj plats</option>
+        {% for value, label in stations %}<option value="{{ value }}" {{ "selected" if value == row.station_id }}>{{ label }}</option>{% endfor %}
+      </select>
+    </span>
+    {% if row.station_id is none and row.station %}<span class="hint">{{ row.station }} i schemat</span>{% endif %}
+  </td>
+  <td class="c-seats">
+    {% for seat in row.seats %}
+    <span class="seat">
+      <span class="cell{{ ' cell-ch' if seat.changed }}" data-field="seat-{{ seat.key }}">
+        <select name="seat-{{ seat.key }}" form="{{ fid }}" class="admin-input" aria-label="Plats {{ loop.index }}" {{ off }}>
+          <option value="">Ledigt</option>
+          {% for p in players %}<option value="{{ p.id }}" {{ "selected" if p.id == seat.player_id }}>{{ p.name }}{{ " (ledarfamilj)" if p.exempt }}</option>{% endfor %}
+        </select>
+      </span>
+      {% if seat.swapping %}<span class="role leader">Byte väntar</span>{% endif %}
+      {% if seat.hint %}<span class="hint">({{ seat.hint }} i schemat)</span>{% endif %}
+    </span>
+    {% endfor %}
+  </td>
+  <td>
+    <span class="cell{{ ' cell-ch' if 'note' in row.changed }}" data-field="note"><input name="note" form="{{ fid }}" class="admin-input note" value="{{ row.note or '' }}" placeholder="Anteckning" aria-label="Anteckning" {{ off }}></span>
+  </td>
+  <td class="c-actions">
+    {% if row.status in ("live", "edit", "new") %}
+    <button type="submit" form="{{ fid }}" formaction="{{ url_for('admin.do_action', slug=slug, name='pending.remove') }}" class="btn btn-sm">Ta bort</button>
     {% endif %}
-    {% if slot.id in swapping %}<span class="role leader">Byte väntar</span>{% endif %}
-    <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name='slot.update', slot_ids=[slot.id]) }}">Ändra spelare</a>
-  </div>
-  {% endfor %}
-  {% set ids = shift.slots | map(attribute="id") | list %}
-  <div class="inline-form">
-    <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name='slot.update', slot_ids=ids) }}">{{ "Sätt datum" if shift.date is none else "Ändra" }}</a>
-    <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name='slot.delete', slot_ids=ids) }}">Ta bort</a>
-  </div>
-</div>
+    {% if row.status in ("edit", "remove") %}
+    <button type="submit" form="{{ fid }}" formaction="{{ url_for('admin.do_action', slug=slug, name='pending.undo') }}" name="entry_id" value="{{ row.entry_id }}" class="btn btn-sm">Ångra</button>
+    {% endif %}
+    {% if row.conflict %}<span class="flag-note">Behöver ses över</span>{% endif %}
+    <span class="row-alert field-error" role="alert"></span>
+  </td>
+</tr>
 {% endmacro %}
 
 {% if done %}<div class="notice">Klart. Ändringen är genomförd.</div>{% endif %}
@@ -34,34 +77,44 @@
   <span class="count">{{ open_seats }} {{ "ledig plats" if open_seats == 1 else "lediga platser" }}</span>
 </div>
 <div class="inline-form">
-  <a class="btn btn-primary" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='slots.create') }}">+ Lägg till pass</a>
-  <a class="btn" href="{{ url_for('admin.do_action', slug=ctx.team.slug, name='schedule.import') }}">Importera Excel</a>
-  <a class="btn btn-sm" href="{{ url_for('admin.pass_template', slug=ctx.team.slug) }}">Ladda ned Excel-mall</a>
+  <a class="btn btn-primary" href="{{ url_for('admin.do_action', slug=slug, name='slots.create') }}">+ Lägg till pass</a>
+  <a class="btn" href="{{ url_for('admin.do_action', slug=slug, name='schedule.import') }}">Importera Excel</a>
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_template', slug=slug) }}">Ladda ned Excel-mall</a>
   {% if include_past %}
-  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug) }}">Dölj tidigare</a>
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=slug) }}">Dölj tidigare</a>
   {% else %}
-  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug, tidigare=1) }}">Visa tidigare</a>
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=slug, tidigare=1) }}">Visa tidigare</a>
   {% endif %}
 </div>
-<form method="get" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='slots.assign') }}">
-  {% for day in days %}
-  <div class="day-group">
-    <div class="day-head">
-      <span class="day-title">{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}</span>
-      <span class="day-count">{{ day.shifts|length }} pass</span>
-    </div>
-    {% for shift in day.shifts %}{{ shift_card(shift, ctx.team.slug, swapping) }}{% endfor %}
-  </div>
-  {% else %}
-  <p class="empty-state">Inga kommande pass. Lägg till pass eller importera coachens Excel.</p>
+{% if events %}
+<div class="pass-scroll">
+<table class="pass-table" data-granska="{{ url_for('admin.granska_batch', slug=slug) }}">
+  <thead>
+    <tr><th><span class="visually-hidden">Status</span></th><th>Datum</th><th>Tid</th><th>Plats</th><th>Spelare</th><th>Anteckning</th><th><span class="visually-hidden">Åtgärder</span></th></tr>
+  </thead>
+  {% for event in events %}
+  <tbody>
+    <tr class="event-head"><th colspan="7" scope="colgroup">
+      <span class="event-title">{{ event.title }}</span>
+      <span class="count">{{ event.open_seats }} {{ "ledig plats" if event.open_seats == 1 else "lediga platser" }}</span>
+    </th></tr>
+    {% for day in event.days %}
+    <tr class="day-head"><td colspan="7" class="day">{% if day.date %}{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}{% else %}Datum ej satt{% endif %}</td></tr>
+    {% for row in day.rows %}{{ pass_row(row) }}{% endfor %}
+    {% endfor %}
+  </tbody>
   {% endfor %}
-  {% if undated_shifts %}
-  <div class="section-head"><h2>Datum ej satt</h2><span class="count">{{ undated_shifts|length }} pass</span></div>
-  {% for shift in undated_shifts %}{{ shift_card(shift, ctx.team.slug, swapping) }}{% endfor %}
-  {% endif %}
-  {% if open_seats %}
-  <button type="submit" class="btn btn-primary">Bemanna valda platser</button>
-  {% endif %}
-</form>
-<p class="agent-hint">agent → <b>GET /admin/api/slots?team={{ ctx.team.slug }}</b></p>
+</table>
+</div>
+{% else %}
+<p class="empty-state">Inga kommande pass. Lägg till pass eller importera coachens Excel.</p>
+{% endif %}
+{% if pending %}
+<div class="pending-bar" data-pending-bar>
+  <span class="pending-text" data-pending-text>{{ pending }} {{ "väntande ändring" if pending == 1 else "väntande ändringar" }}, inga mejl skickade</span>
+  <span class="pending-actions"><a class="btn btn-primary" href="{{ url_for('admin.granska_batch', slug=slug) }}">Granska</a></span>
+</div>
+{% endif %}
+<p class="agent-hint">agent → <b>GET /admin/api/slots?team={{ slug }}</b></p>
+<script src="{{ url_for('static', filename='admin_pass.js') }}" defer></script>
 {% endblock %}

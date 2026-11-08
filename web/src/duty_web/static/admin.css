@@ -12,6 +12,9 @@ body.admin-body { padding-block: 24px; }
   border-radius: 26px;
   box-shadow: var(--shadow);
   overflow: hidden;
+  /* clip, not hidden: hidden makes .bench a scroll container, and the
+     Granska bar could then no longer stick to the viewport. */
+  overflow: clip;
 }
 
 .bench-main { padding: 18px; display: flex; flex-direction: column; gap: 16px; background: var(--bg); }
@@ -101,10 +104,7 @@ body.admin-body { padding-block: 24px; }
 .error-summary p { margin: 0 0 4px; font-weight: 800; color: var(--danger); }
 .error-summary ul { margin: 0; padding-left: 18px; }
 
-/* Pass: the team's shifts, seat by seat */
-.pass-shift { border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.pass-top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.pass-place { font-size: 11.5px; color: var(--ink-dim); font-weight: 700; }
+/* Bemanna valda platser */
 .pass-seat { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; font-weight: 600; }
 .seat-open { color: var(--warm); font-weight: 800; }
 
@@ -114,3 +114,41 @@ body.admin-body { padding-block: 24px; }
 .admin-input.seats { width: 4.5em; }
 .weekdays label { font-size: 12px; font-weight: 700; }
 .seat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+
+/* Pass: one editable row per Pass. Orange is väntande, so parents can't see it yet. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* A wide table scrolls inside the page instead of widening it. */
+.pass-scroll { overflow-x: auto; border: 2px solid var(--ink); border-radius: 12px; background: var(--surface); }
+.pass-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; font-weight: 600; }
+.pass-table thead th { text-align: left; font-size: 11.5px; font-weight: 800; color: var(--ink-dim); padding: 7px 8px; border-bottom: 2px solid var(--ink); background: var(--surface-2); white-space: nowrap; }
+.pass-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.pass-table form { margin: 0; display: inline; }
+.pass-table .event-head th { text-align: left; font-family: 'Fraunces', serif; font-size: 15px; font-weight: 800; color: var(--ink); background: var(--surface-2); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); padding: 9px 8px; }
+.pass-table tbody:first-of-type .event-head th { border-top: none; }
+.pass-table .event-head .count { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: var(--ink-dim); margin-left: 10px; }
+.pass-table .day { font-family: 'Fraunces', serif; font-weight: 800; font-size: 14px; background: var(--surface-2); }
+.pass-table .c-time, .pass-table .c-actions { white-space: nowrap; }
+.pass-table .c-seats .seat { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.pass-table .c-seats .seat:last-child { margin-bottom: 0; }
+.pass-table .hint { display: block; }
+.pass-table .c-seats .hint { display: inline; }
+.pass-table .admin-input { padding: 4px 7px; border-width: 1.5px; font-size: 13px; }
+.pass-table .admin-input.note { width: 11em; }
+.pass-table .admin-input[disabled] { opacity: .6; }
+.pass-table .cell { display: inline-block; border: 1.5px solid transparent; border-radius: 8px; }
+.pass-table .cell .admin-input { border-color: var(--line); }
+.pass-table .sign { display: inline-block; width: 20px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-weight: 700; border-radius: 6px; }
+.pass-table tr.pend .sign { color: var(--warm); background: var(--warm-soft); }
+.pass-table tr.pend td:not(.day) { background: color-mix(in srgb, var(--warm-soft) 45%, var(--surface)); }
+.pass-table tr.pend .cell-ch { border-color: var(--warm); background: var(--warm-soft); }
+.pass-table tr.pend .cell-ch .admin-input { border-color: var(--warm); font-weight: 800; }
+.pass-table tr.gone td:not(.c-actions) { text-decoration: line-through; color: var(--ink-dim); }
+.pass-table tr.gone .admin-input { text-decoration: line-through; }
+.pass-table tr.flag td:first-child { box-shadow: inset 4px 0 0 var(--warm); }
+.flag-note { font-size: 11.5px; font-weight: 800; color: var(--warm); }
+.row-alert:empty { display: none; }
+.row-alert { display: block; max-width: 18em; white-space: normal; }
+
+/* The bar stays in reach while the table scrolls. */
+.pending-bar { position: sticky; bottom: 12px; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 12px 10px 14px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); }
+.pending-actions { display: flex; gap: 8px; align-items: center; }

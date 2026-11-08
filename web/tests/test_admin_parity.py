@@ -16,7 +16,7 @@ def test_the_registry_has_the_v1_actions():
     assert REAL_ACTIONS == [
         "pending.discard", "pending.edit", "pending.keep", "pending.publish", "pending.remove",
         "pending.undo",
-        "roster.import", "schedule.import", "slot.delete", "slot.update", "slots.assign",
+        "roster.import", "schedule.import", "slots.assign",
         "slots.create", "station.create", "station.link_document", "team_admins.add",
         "team_admins.remove", "venue.create",
     ]
