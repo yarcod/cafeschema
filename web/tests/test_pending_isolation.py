@@ -5,7 +5,7 @@ import pytest
 
 from duty_web.admin import slot_ops
 from duty_web.clock import utcnow
-from duty_web.models import Slot, SwapRequest
+from duty_web.models import PENDING_EDIT, PENDING_REMOVE, PendingPass, Slot, SwapRequest
 
 from .conftest import login, make_family, run_action
 
@@ -40,6 +40,11 @@ def _stage_everything(app, session_factory, admins, seeded, second_team):
                slot_ids=[seeded["future_slot"].id], day="2031-03-05", start="10:00", end="12:00",
                **{f"seat-{seeded['future_slot'].id}": str(ida.id)})
     run_action(app, session_factory, ansvarig, "pending.remove", slot_ids=[seeded["slot"].id])
+    # Guard against silent no-ops: the "nothing changed" tests mean little otherwise.
+    kinds = {(p.kind, tuple(x["slot_id"] for x in p.seats))
+             for p in session_factory().query(PendingPass).all()}
+    assert kinds == {(PENDING_EDIT, (seeded["future_slot"].id,)),
+                     (PENDING_REMOVE, (seeded["slot"].id,))}
 
 
 def _snapshot(client, seeded):
@@ -76,19 +81,26 @@ def test_staging_changes_no_slot(app, session_factory, admins, seeded, second_te
     assert rows() == before
 
 
-def test_staging_sends_no_mail(app, session_factory, admins, seeded, second_team, sent):
-    _pending_swap(session_factory, seeded, second_team)
+@pytest.fixture
+def staged_with_swap(app, session_factory, admins, seeded, second_team, sent):
+    """Everything staged, plus marking the swap's own Pass for removal.
 
+    Removing a Pass that already has a staged edit replaces that edit with a
+    remove entry, so the swap's seat ends up staged as a removal.
+    """
+    swap_id = _pending_swap(session_factory, seeded, second_team)
     _stage_everything(app, session_factory, admins, seeded, second_team)
     run_action(app, session_factory, admins["ansvarig"], "pending.remove", slot_ids=[seeded["future_slot"].id])
+    kinds = {(p.kind, tuple(x["slot_id"] for x in p.seats))
+             for p in session_factory().query(PendingPass).all()}
+    assert kinds == {(PENDING_REMOVE, (seeded["future_slot"].id,)),
+                     (PENDING_REMOVE, (seeded["slot"].id,))}
+    return swap_id
 
+
+def test_staging_sends_no_mail(staged_with_swap, sent):
     assert sent == []
 
 
-def test_staging_leaves_pending_swaps_alone(app, session_factory, admins, seeded, second_team, sent):
-    swap_id = _pending_swap(session_factory, seeded, second_team)
-
-    _stage_everything(app, session_factory, admins, seeded, second_team)
-    run_action(app, session_factory, admins["ansvarig"], "pending.remove", slot_ids=[seeded["future_slot"].id])
-
-    assert session_factory().get(SwapRequest, swap_id).status == "pending"
+def test_staging_leaves_pending_swaps_alone(staged_with_swap, session_factory):
+    assert session_factory().get(SwapRequest, staged_with_swap).status == "pending"
