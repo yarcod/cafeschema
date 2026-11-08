@@ -20,8 +20,12 @@ SECRET = "test-secret"
 
 @pytest.fixture
 def day(seeded):
-    # Two days after the seeded future shift: same month, so same season.
-    return seeded["future_slot"].date + timedelta(days=2)
+    # A weekday just after the seeded future shift: same month, so same
+    # season, and never that shift's weekend, whatever the 16th falls on.
+    day = seeded["future_slot"].date + timedelta(days=2)
+    while day.weekday() >= 4:
+        day += timedelta(days=1)
+    return day
 
 
 def _seats(session_factory, team_id, day, count=1, start=9, player_id=None):
@@ -183,6 +187,76 @@ def test_a_lock_onto_an_undated_shift_the_player_is_already_on_is_refused(
         _run(app, session_factory, admins["ansvarig"], slot_ids=[seat], locked={str(seat): ida})
 
     assert "Ida Ny står redan på" in caught.value.errors["locked"]
+
+
+def test_a_lock_on_the_weekend_the_player_already_works_is_refused(app, session_factory, admins, seeded, day):
+    ida = _ida(session_factory, seeded)
+    saturday = day + timedelta(days=5 - day.weekday())
+    first = _seats(session_factory, seeded["team"].id, saturday)[0]
+    second = _seats(session_factory, seeded["team"].id, saturday + timedelta(days=1))[0]
+
+    with pytest.raises(ValidationError) as caught:
+        _run(app, session_factory, admins["ansvarig"], slot_ids=[first, second],
+             locked={str(first): ida, str(second): ida})
+
+    assert "Ida Ny har redan ett pass samma helg" in caught.value.errors["locked"]
+
+
+def _busy_on_second_team(session_factory, second_team, day, who="sibling"):
+    """Put a player of the second team on 09–12 that day."""
+    _seats(session_factory, second_team["team"].id, day, start=9, player_id=second_team[who].id)
+
+
+def test_a_parent_busy_on_another_team_is_not_picked_at_the_same_time(
+    app, session_factory, admins, seeded, second_team, day
+):
+    _exempt(session_factory, second_team["neighbour_slot"].player_id)
+    _busy_on_second_team(session_factory, second_team, day)
+    (seat,) = _seats(session_factory, seeded["team"].id, day, start=10)
+
+    plan = _run(app, session_factory, admins["ansvarig"], apply=False, slot_ids=[seat], seed=1)
+
+    assert plan.changes == []
+    assert plan.warnings == [
+        f"{_label(day, 10)}: Ledigt, alla kvarvarande har redan pass samtidigt i ett annat lag."
+    ]
+
+
+def test_a_parent_can_take_a_shift_right_after_one_on_another_team(
+    app, session_factory, admins, seeded, second_team, day
+):
+    _exempt(session_factory, second_team["neighbour_slot"].player_id)
+    _busy_on_second_team(session_factory, second_team, day)
+    (seat,) = _seats(session_factory, seeded["team"].id, day, start=12)
+
+    plan = _run(app, session_factory, admins["ansvarig"], apply=False, slot_ids=[seat], seed=1)
+
+    assert [c.summary for c in plan.changes] == [f"Tova Exempel → {_label(day, 12)}"]
+
+
+def test_another_family_on_another_team_blocks_nobody(
+    app, session_factory, admins, seeded, second_team, day
+):
+    _exempt(session_factory, second_team["neighbour_slot"].player_id)
+    _busy_on_second_team(session_factory, second_team, day, who="stranger")
+    (seat,) = _seats(session_factory, seeded["team"].id, day, start=10)
+
+    plan = _run(app, session_factory, admins["ansvarig"], apply=False, slot_ids=[seat], seed=1)
+
+    assert [c.summary for c in plan.changes] == [f"Tova Exempel → {_label(day, 10)}"]
+
+
+def test_a_lock_clashing_with_another_team_is_refused(
+    app, session_factory, admins, seeded, second_team, day
+):
+    _busy_on_second_team(session_factory, second_team, day)
+    (seat,) = _seats(session_factory, seeded["team"].id, day, start=10)
+
+    with pytest.raises(ValidationError) as caught:
+        _run(app, session_factory, admins["ansvarig"], slot_ids=[seat],
+             locked={str(seat): seeded["player"].id})
+
+    assert "Tova Exempel har redan ett pass samtidigt i ett annat lag" in caught.value.errors["locked"]
 
 
 def test_seats_from_two_seasons_are_refused(app, session_factory, admins, seeded):

@@ -217,7 +217,10 @@ Input: `slot_ids[], locked{slot_id: player_id}, seed`.
   dates), counting undated shifts and the ones being planned.
 - **Seats** are filled in date order. Each takes the eligible candidate with
   the lowest load, where:
-  - a candidate who already has a shift that day is not eligible (hard rule);
+  - a candidate who already has a shift that day or that weekend (Friday to
+    Sunday) is not eligible (hard rule);
+  - a candidate whose family, by any shared parent, has an overlapping shift
+    on another team is not eligible (hard rule);
   - a shift the weekend before or after adds a penalty (soft rule);
   - among equally loaded candidates, a sibling of someone already on the
     shift goes first;

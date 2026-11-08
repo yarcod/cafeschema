@@ -61,7 +61,10 @@ arbetsbänken på `/admin/<lag>/`:
   aktiviteten och upp till fyra rader med tid, station och antal platser.
   Bocka i lediga platser och tryck **Bemanna valda platser**: den med minst
   pass den här säsongen går först, syskon hamnar gärna på samma pass, och
-  slumpen avgör bara mellan lika. Ledarnas barn får aldrig pass. **Ändra** och
+  slumpen avgör bara mellan lika. Ingen familj får två pass samma dag eller
+  helg (fredag till söndag), eller ett pass samtidigt som ett eget pass i ett
+  annat lag. Räcker inte familjerna blir platsen ledig och granskningen säger
+  varför. Ledarnas barn får aldrig pass. **Ändra** och
   **Ta bort** gäller ett pass i taget. Flyttar du ett pass med datum till en
   annan dag, tid eller station får familjen ett mejl; granskningen säger vilka. **Importera Excel** tar coachens fil
   som den är (se nedan).
