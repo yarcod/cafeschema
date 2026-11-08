@@ -185,11 +185,15 @@ terminalen: svara i webben.
 
 Läsning: `GET /admin/api/slots?team=f15` (valfritt `from`/`to`),
 `GET /admin/api/roster?team=f15`, `GET /admin/api/venues`, `GET /admin/api/documents`.
+`GET /admin/api/pending?team=f15` visar det väntande, namn utan adresser
+(`entries`), och evenemangen (`events` med `key` och `open_seats`).
 
 Ändringar av pass stages med `pending.*` (`pending.edit`, `pending.remove`,
 `pending.undo`, `pending.keep`, `pending.discard`, `pending.draw`), och
 `slots.create` och `slots.from_pattern` stages också: inget når föräldrar eller
-mejl förrän någon genomför. `pending.draw` kräver inget `seed`: utelämnat väljs
+mejl förrän någon genomför. `pending.draw` tar ett `event`, nyckeln
+`Aktivitet|ÅÅÅÅ-MM-DD` med evenemangets första dag (eller `Aktivitet|` för
+odaterade pass) som `pending` listar. `pending.draw` kräver inget `seed`: utelämnat väljs
 ett, och `plan_token` bär det, så det som genomförs är det som granskades.
 `pending.publish` är för en människa som standard: en agent får bara genomföra
 när den uttryckligen blivit ombedd och har fått godkänt för just det

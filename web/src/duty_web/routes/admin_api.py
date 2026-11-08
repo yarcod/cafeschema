@@ -20,6 +20,7 @@ from ..admin.actions.slots_create import WEEKDAY_KEYS
 from ..admin.actions.base import NearDuplicate, ValidationError, fields_schema
 from ..admin.api_keys import authenticate
 from ..admin.executor import apply_plan, dry_run, scope_allows
+from ..admin.pass_rows import pass_view
 from ..admin.permissions import AdminContext, admin_context
 from ..admin.plan_tokens import PlanTokenError
 from ..admin.slot_ops import pending_slot_ids
@@ -171,6 +172,31 @@ def slots():
                 "pending_swap": slot.id in swapping,
             }
             for slot in rows
+        ],
+    })
+
+
+@api_bp.route("/pending", methods=["GET"])
+def pending():
+    """The väntande batch as Granska reviews it, and the events Slumpa takes. Names only."""
+    key = _key()
+    slug = request.args.get("team") or None
+    if not slug:
+        raise _Refused(400, {"errors": {"team": "Ange lagets slug, t.ex. f15"}})
+    ctx = _context(key, slug)
+    session = _session()
+    publish = REGISTRY["pending.publish"]
+    try:
+        entries = publish.plan(session, ctx, publish.Input()).review
+    except ValidationError:
+        # Publish refuses only an empty batch.
+        entries = []
+    return jsonify({
+        "team": ctx.team.slug,
+        "entries": entries,
+        "events": [
+            {"key": event["key"], "open_seats": event["open_seats"]}
+            for event in pass_view(session, ctx, include_past=False)
         ],
     })
 

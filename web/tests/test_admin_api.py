@@ -1,11 +1,12 @@
 """The agent's door: same actions, same rights, a personal key in a header."""
 
 import logging
+from datetime import time
 
 from duty_web.admin.ratelimit import RateLimiter
-from duty_web.models import ROLE_ANSVARIG, TeamRole, Venue
+from duty_web.models import ROLE_ANSVARIG, Slot, TeamRole, Venue
 
-from .conftest import bearer, login
+from .conftest import bearer, login, run_action
 
 
 def _echo(client, key, **body):
@@ -158,3 +159,40 @@ def test_a_foreign_cookie_starting_with_cs_does_not_block(client, api_keys):
     client.set_cookie("annan", "cs_inte_en_nyckel")
 
     assert client.get("/admin/api", headers=bearer(api_keys["club"])).status_code == 200
+
+
+def test_agents_read_the_batch_with_names_only(client, app, session_factory, admins, api_keys, seeded):
+    slot = seeded["future_slot"]
+    run_action(app, session_factory, admins["ansvarig"], "pending.edit", slot_ids=[slot.id], start="19:00")
+
+    response = client.get("/admin/api/pending?team=f14-bla", headers=bearer(api_keys["ansvarig"]))
+
+    body = response.get_json()
+    assert response.status_code == 200 and body["team"] == "f14-bla"
+    (entry,) = body["entries"]
+    assert set(entry) == {"entry_id", "day", "op", "summary", "detail", "conflict", "missing", "drawn"}
+    assert entry["op"] == "update" and entry["conflict"] is None and entry["drawn"] is False
+    assert "19:00" in entry["summary"] and "tid 18:00" in entry["detail"]
+    assert all(set(event) == {"key", "open_seats"} for event in body["events"])
+    assert "@" not in response.get_data(as_text=True)
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_an_empty_batch_still_lists_events(client, admins, api_keys, seeded, session_factory):
+    session = session_factory()
+    session.add(Slot(team_id=seeded["team"].id, date=seeded["future_slot"].date, start_time=time(9),
+                     end_time=time(12), station="Cafe", duty_name="Cafépass", venue="Arena"))
+    session.commit()
+
+    body = client.get("/admin/api/pending?team=f14-bla", headers=bearer(api_keys["ansvarig"])).get_json()
+
+    assert body["entries"] == []
+    assert any(event["open_seats"] == 1 for event in body["events"])
+
+
+def test_the_batch_is_not_readable_for_another_team_or_without_a_key(client, api_keys, second_team):
+    other = client.get("/admin/api/pending?team=p13", headers=bearer(api_keys["ansvarig"]))
+
+    assert other.status_code == 404
+    assert client.get("/admin/api/pending?team=f14-bla").status_code == 401
+    assert client.get("/admin/api/pending", headers=bearer(api_keys["ansvarig"])).status_code == 400
