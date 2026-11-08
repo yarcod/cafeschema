@@ -189,3 +189,14 @@ def test_the_import_answer_tables_exist(tmp_path):
 
     tables = {row[0] for row in sqlite3.connect(path).execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"name_aliases", "activity_stations"} <= tables
+
+
+def test_migrate_creates_pending_passes_on_an_existing_database(tmp_path):
+    path = _pre_admin_db(tmp_path)
+
+    migrate(path)
+
+    tables = {
+        row[0] for row in sqlite3.connect(path).execute("SELECT name FROM sqlite_master")
+    }
+    assert "pending_passes" in tables

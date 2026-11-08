@@ -299,3 +299,20 @@ def api_keys(session_factory, admins):
         who: create_api_key(session, admins[who].id)[1]
         for who in ("ansvarig", "club", "parent")
     }
+
+
+def run_action(app, session_factory, person, name, *, apply=True, slug="f14-bla", **fields):
+    """Plan an admin action as `person`, and apply it unless apply=False."""
+    from duty_web.admin.actions import REGISTRY
+    from duty_web.admin.executor import apply_plan, dry_run
+    from duty_web.admin.permissions import admin_context
+
+    secret = "test-secret"
+    session = session_factory()
+    ctx = admin_context(session, session.get(Person, person.id), slug)
+    action = REGISTRY[name]
+    with app.test_request_context():
+        plan, token = dry_run(session, ctx, action, action.parse(fields, {}), secret_key=secret)
+        if apply:
+            apply_plan(session, ctx, token, secret_key=secret, via="webb")
+    return plan

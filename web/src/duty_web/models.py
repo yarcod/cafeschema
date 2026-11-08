@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from sqlalchemy import Column, ForeignKey, Table, UniqueConstraint, false
+from sqlalchemy import JSON, Column, ForeignKey, Table, UniqueConstraint, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -258,3 +258,32 @@ class ActivityStation(Base):
     station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"))
 
     station: Mapped[Station] = relationship()
+
+
+PENDING_EDIT = "edit"
+PENDING_NEW = "new"
+PENDING_REMOVE = "remove"
+
+
+class PendingPass(Base):
+    """A Pass edit, addition or removal that is staged until it is published.
+
+    Staged apart from slots so nothing reaches the families (or the
+    schedule they read) before Granska. Slot and player ids live inside the
+    JSON with no foreign key: with PRAGMA foreign_keys=ON a real one would
+    make an Excel import's slot delete fail. A vanished id is instead
+    reported as a conflict.
+
+    fields maps a field name to {"from": value, "to": value}; seats is a list
+    of {"slot_id", "from", "to", "drawn"}. Both are JSON columns that don't
+    track mutation, so always assign a new dict or list.
+    """
+
+    __tablename__ = "pending_passes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    kind: Mapped[str]
+    duty_name: Mapped[str | None] = mapped_column(default=None)
+    fields: Mapped[dict] = mapped_column(JSON, default=dict)
+    seats: Mapped[list] = mapped_column(JSON, default=list)

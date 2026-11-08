@@ -15,20 +15,9 @@ from duty_web.clock import utcnow
 from duty_web.models import Person, Player, Slot, SwapRequest, Team
 from duty_web.places import find_or_create_station
 
-from .conftest import bearer, login, make_family
+from .conftest import bearer, login, make_family, run_action
 
 SECRET = "test-secret"
-
-
-def _run(app, session_factory, person, name, *, apply=True, **fields):
-    session = session_factory()
-    ctx = admin_context(session, session.get(Person, person.id), "f14-bla")
-    action = REGISTRY[name]
-    with app.test_request_context():
-        plan, token = dry_run(session, ctx, action, action.parse(fields, {}), secret_key=SECRET)
-        if apply:
-            apply_plan(session, ctx, token, secret_key=SECRET, via="webb")
-    return plan
 
 
 def _undated(session_factory, team_id, count=2):
@@ -78,7 +67,7 @@ def moved(monkeypatch):
 def test_an_undated_shift_gets_its_date(app, session_factory, admins, seeded):
     ids = _undated(session_factory, seeded["team"].id)
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=ids, day="2027-02-05")
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=ids, day="2027-02-05")
 
     assert [c.detail for c in plan.changes] == ["datum satt: fre 5 feb"] * 2
     session = session_factory()
@@ -91,7 +80,7 @@ def test_time_and_station_change_together(app, session_factory, admins, seeded):
     session.commit()
     seat = seeded["future_slot"].id
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat],
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat],
                 start="17:30", end="20:30", station_id=cafe.id)
 
     assert plan.changes[0].detail == "tid 18:00–21:00 → 17:30–20:30; station Cafe → Café"
@@ -107,7 +96,7 @@ def test_a_new_player_cancels_the_seats_swap_and_mails_both_families(
     ida = _ida(session_factory, seeded)
     swap = _swap(session_factory, seeded, second_team)
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update",
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update",
                 slot_ids=[seeded["future_slot"].id], player_id=ida)
 
     assert plan.changes[0].detail == "Tova Exempel → Ida Ny"
@@ -119,7 +108,7 @@ def test_a_new_player_cancels_the_seats_swap_and_mails_both_families(
 def test_a_note_alone_leaves_swaps_alone(app, session_factory, admins, seeded, second_team, mails):
     swap = _swap(session_factory, seeded, second_team)
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update",
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update",
                 slot_ids=[seeded["future_slot"].id], note="Ta med nycklar")
 
     assert plan.changes[0].detail == "anteckning: ingen → 'Ta med nycklar'"
@@ -147,7 +136,7 @@ def test_a_note_changed_after_review_is_a_conflict(app, session_factory, admins,
 
 def test_seats_from_two_shifts_are_refused(app, session_factory, admins, seeded):
     with pytest.raises(ValidationError) as caught:
-        _run(app, session_factory, admins["ansvarig"], "slot.update",
+        run_action(app, session_factory, admins["ansvarig"], "slot.update",
              slot_ids=[seeded["future_slot"].id, seeded["slot"].id], note="x")
 
     assert "slot_ids" in caught.value.errors
@@ -166,7 +155,7 @@ def test_moving_a_shift_onto_a_day_its_player_works_is_a_warning(app, session_fa
     session.add_all(seats)
     session.commit()
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", apply=False,
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", apply=False,
                 slot_ids=[s.id for s in seats], day=future.date.isoformat())
 
     assert f"Tova Exempel har redan ett pass {slot_ops.day_label(future.date)}." in plan.warnings
@@ -174,7 +163,7 @@ def test_moving_a_shift_onto_a_day_its_player_works_is_a_warning(app, session_fa
 
 def test_removing_seats_from_two_shifts_is_refused(app, session_factory, admins, seeded):
     with pytest.raises(ValidationError) as caught:
-        _run(app, session_factory, admins["ansvarig"], "slot.delete",
+        run_action(app, session_factory, admins["ansvarig"], "slot.delete",
              slot_ids=[seeded["future_slot"].id, seeded["slot"].id])
 
     assert "slot_ids" in caught.value.errors
@@ -206,7 +195,7 @@ def test_one_player_of_a_two_seat_shift_is_changed_from_its_own_link(
 def test_a_seat_can_be_made_free(app, session_factory, admins, seeded):
     seat = seeded["future_slot"].id
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], clear_player=True)
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], clear_player=True)
 
     assert plan.changes[0].detail == "Tova Exempel → Ledigt"
     slot = session_factory().get(Slot, seat)
@@ -217,7 +206,7 @@ def test_a_seat_can_be_made_free(app, session_factory, admins, seeded):
 def test_a_busy_player_is_a_warning(app, session_factory, admins, seeded, second_team):
     moa = second_team["neighbour_slot"].player_id
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", apply=False,
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", apply=False,
                 slot_ids=[seeded["future_slot"].id], player_id=moa)
 
     assert any("Moa Granne har redan ett pass" in w for w in plan.warnings)
@@ -226,7 +215,7 @@ def test_a_busy_player_is_a_warning(app, session_factory, admins, seeded, second
 def test_the_unchanged_form_has_nothing_to_change(app, session_factory, admins, seeded):
     future = seeded["future_slot"]
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", apply=False,
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", apply=False,
                 slot_ids=[future.id], day=future.date.isoformat(), start="18:00", end="21:00",
                 player_id=seeded["player"].id)
 
@@ -241,7 +230,7 @@ def test_the_unchanged_form_has_nothing_to_change(app, session_factory, admins, 
 ])
 def test_bad_values_are_refused_next_to_their_field(app, session_factory, admins, seeded, fields, key):
     with pytest.raises(ValidationError) as caught:
-        _run(app, session_factory, admins["ansvarig"], "slot.update",
+        run_action(app, session_factory, admins["ansvarig"], "slot.update",
              slot_ids=[seeded["future_slot"].id], **fields)
 
     assert key in caught.value.errors
@@ -251,7 +240,7 @@ def test_a_player_is_changed_one_seat_at_a_time(app, session_factory, admins, se
     ids = _undated(session_factory, seeded["team"].id)
 
     with pytest.raises(ValidationError) as caught:
-        _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=ids,
+        run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=ids,
              player_id=seeded["player"].id)
 
     assert "player_id" in caught.value.errors
@@ -259,7 +248,7 @@ def test_a_player_is_changed_one_seat_at_a_time(app, session_factory, admins, se
 
 def test_another_teams_player_is_refused(app, session_factory, admins, seeded, second_team):
     with pytest.raises(ValidationError) as caught:
-        _run(app, session_factory, admins["ansvarig"], "slot.update",
+        run_action(app, session_factory, admins["ansvarig"], "slot.update",
              slot_ids=[seeded["future_slot"].id], player_id=second_team["stranger"].id)
 
     assert "player_id" in caught.value.errors
@@ -282,7 +271,7 @@ def test_removing_a_shift_takes_its_swaps_and_mails_both_families(
     _swap(session_factory, seeded, second_team, status="accepted")
     seat = seeded["future_slot"].id
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.delete", slot_ids=[seat])
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.delete", slot_ids=[seat])
 
     assert [(c.op, c.detail) for c in plan.changes] == [("delete", "Tova Exempel")]
     session = session_factory()
@@ -292,7 +281,7 @@ def test_removing_a_shift_takes_its_swaps_and_mails_both_families(
 
 def test_another_teams_shift_cannot_be_removed(app, session_factory, admins, second_team):
     with pytest.raises(ValidationError):
-        _run(app, session_factory, admins["ansvarig"], "slot.delete",
+        run_action(app, session_factory, admins["ansvarig"], "slot.delete",
              slot_ids=[second_team["stranger_slot"].id])
 
 
@@ -319,7 +308,7 @@ def test_both_doors_plan_the_same(client, admins, api_keys, csrf_token, seeded, 
 def test_a_moved_shift_mails_its_family(app, session_factory, admins, seeded, moved):
     seat = seeded["future_slot"]
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat.id],
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat.id],
                 start="17:00", end="20:00")
 
     (emails, kw), = moved
@@ -336,7 +325,7 @@ def test_a_moved_shift_with_a_swap_is_one_mail_per_family(
 ):
     _swap(session_factory, seeded, second_team)
 
-    _run(app, session_factory, admins["ansvarig"], "slot.update",
+    run_action(app, session_factory, admins["ansvarig"], "slot.update",
          slot_ids=[seeded["future_slot"].id], start="17:00", end="20:00")
 
     assert [kw["swap_cancelled"] for _, kw in moved] == [True]
@@ -347,20 +336,20 @@ def test_no_move_mail_for_a_note_a_first_date_or_a_family_without_mail(
     app, session_factory, admins, seeded, moved
 ):
     seat = seeded["future_slot"].id
-    _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], note="Nycklar")
+    run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], note="Nycklar")
     undated = _undated(session_factory, seeded["team"].id, count=1)
     session = session_factory()
     session.get(Slot, undated[0]).player_id = seeded["player"].id   # a held seat, first date
     session.commit()
-    _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=undated, day="2027-02-05")
+    run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=undated, day="2027-02-05")
     ida = _ida(session_factory, seeded)
-    _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], player_id=ida)
+    run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], player_id=ida)
     session = session_factory()
     for parent in session.get(Slot, seat).player.parents:
         parent.email_notifications = False
     session.commit()
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], start="17:00")
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat], start="17:00")
 
     assert moved == []
     assert not any("får ett mejl om att passet flyttas" in w for w in plan.warnings)
@@ -380,7 +369,7 @@ def test_siblings_on_one_shift_get_one_move_mail(app, session_factory, admins, s
     session.add(twin)
     session.commit()
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update",
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update",
                 slot_ids=[first.id, twin.id], start="17:00", end="20:00")
 
     assert len(moved) == 1
@@ -395,7 +384,7 @@ def test_a_muted_move_sends_no_move_mail_but_still_mails_the_cancelled_swap(
     swap = _swap(session_factory, seeded, second_team)
     seat = seeded["future_slot"].id
 
-    plan = _run(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat],
+    plan = run_action(app, session_factory, admins["ansvarig"], "slot.update", slot_ids=[seat],
                 start="17:00", end="20:00", notify="0")
 
     assert moved == []
