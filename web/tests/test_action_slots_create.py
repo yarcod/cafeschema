@@ -8,7 +8,7 @@ from duty_web.admin.actions import REGISTRY
 from duty_web.admin.actions.base import ValidationError
 from duty_web.admin.executor import apply_plan, dry_run
 from duty_web.admin.permissions import admin_context
-from duty_web.models import Person, Slot
+from duty_web.models import PendingPass, Person, Slot
 from duty_web.places import find_or_create_station
 
 from .conftest import bearer, login
@@ -49,11 +49,33 @@ def test_a_weekend_cup_becomes_empty_seats(app, session_factory, admins):
         "sön 14 mar 12:00–15:00 Bästkustcupen · Café",
     ]
     assert plan.changes[0].detail == "2 platser · Mölnlycke idrottshall"
-    seats = session_factory().query(Slot).filter_by(duty_name="Bästkustcupen").all()
-    assert len(seats) == 5
-    assert {(s.station, s.venue, s.station_id, s.player_id, s.origin) for s in seats} == {
-        ("Café", "Mölnlycke idrottshall", cafe, None, "admin")
-    }
+    assert plan.notes == ["5 lediga platser väntar på att bemannas."]
+
+
+def test_create_stages_new_passes_and_writes_no_slots(app, session_factory, admins):
+    cafe = _station(session_factory)
+    before = session_factory().query(Slot).count()
+
+    _run(app, session_factory, admins["ansvarig"], days=[SAT, SUN], activity="Bästkustcupen",
+         rows=[{"start": "9", "end": "12", "station_id": cafe, "seats": 2}])
+
+    session = session_factory()
+    assert session.query(Slot).count() == before
+    entries = session.query(PendingPass).order_by(PendingPass.id).all()
+    assert [e.kind for e in entries] == ["new", "new"]
+    assert entries[0].duty_name == "Bästkustcupen"
+    assert entries[0].fields["date"]["to"] == SAT
+    assert entries[0].fields["station_id"]["to"] == cafe
+    assert entries[0].seats == [{"slot_id": None, "from": None, "to": None, "drawn": False}] * 2
+
+
+def test_one_seat_reads_in_the_singular(app, session_factory, admins):
+    cafe = _station(session_factory)
+
+    plan = _run(app, session_factory, admins["ansvarig"], apply=False, days=[SAT], activity="Cup",
+                rows=[{"start": "9", "end": "12", "station_id": cafe, "seats": 1}])
+
+    assert plan.notes == ["1 ledig plats väntar på att bemannas."]
 
 
 def test_a_range_is_every_day_in_it(app, session_factory, admins):
@@ -146,22 +168,21 @@ def test_the_form_prefills_a_shortcut(client, admins, session_factory):
     assert "Den här helgen" in page and "Café (Mölnlycke idrottshall)" in page
 
 
-def test_the_form_goes_to_granska_with_the_phone_and_writes_nothing(
-    client, admins, csrf_token, session_factory
-):
+def test_the_form_goes_back_to_the_table(client, admins, csrf_token, session_factory):
     cafe = _station(session_factory)
     login(client, admins["ansvarig"])
 
-    page = client.post("/admin/f14-bla/do/slots.create", data={
+    response = client.post("/admin/f14-bla/do/slots.create", data={
         "csrf_token": csrf_token(), "date_from": SAT, "date_to": SUN, "activity": "Bästkustcupen",
         "row-0-start": "9", "row-0-end": "12", "row-0-station_id": str(cafe), "row-0-seats": "2",
         "row-2-start": "12", "row-2-end": "15", "row-2-station_id": str(cafe), "row-2-seats": "1",
         "row-2-on_days": "lör",
-    }).get_data(as_text=True)
+    })
 
-    assert "Genomför 3 ändringar" in page
-    assert 'class="phone"' in page and "Ledigt" in page
-    assert session_factory().query(Slot).filter_by(duty_name="Bästkustcupen").count() == 0
+    assert response.status_code == 302 and response.headers["Location"].endswith("/admin/f14-bla/pass")
+    session = session_factory()
+    assert session.query(Slot).filter_by(duty_name="Bästkustcupen").count() == 0
+    assert session.query(PendingPass).count() == 3
 
 
 def test_a_form_error_shows_by_its_own_row(client, admins, csrf_token, session_factory):
@@ -184,11 +205,11 @@ def test_both_doors_plan_the_same(client, admins, api_keys, csrf_token, session_
         "rows": [{"start": "9", "end": "12", "station_id": cafe, "seats": 2}],
     }, headers=bearer(api_keys["ansvarig"])).get_json()
     login(client, admins["ansvarig"])
-    page = client.post("/admin/f14-bla/do/slots.create", data={
+    response = client.post("/admin/f14-bla/do/slots.create", data={
         "csrf_token": csrf_token(), "date_from": SAT, "date_to": SUN, "activity": "Bästkustcupen",
         "row-0-start": "9", "row-0-end": "12", "row-0-station_id": str(cafe), "row-0-seats": "2",
-    }).get_data(as_text=True)
+    })
 
     assert api["counts"]["add"] == 2
-    for change in api["changes"]:
-        assert change["summary"] in page
+    assert session_factory().query(PendingPass).count() == 2
+    assert response.status_code == 302

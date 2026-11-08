@@ -1,10 +1,9 @@
 """Lägg till pass (spec Flows): days × shift rows → empty seats.
 
 Each row is a shift (start, end, station, seats) on every picked day, or on
-the weekdays it names. Every seat becomes its own unassigned Slot, so it can
-be staffed and swapped on its own, linked to its station with the station's
-names copied to the slot's text columns for parents, /api/schedule and the
-mailer. Staffing is the next step, under Pass.
+the weekdays it names. Each shift is staged as a väntande new Pass with
+empty seats; nothing reaches parents until Genomför publishes it into Slots.
+Staffing is the next step, under Pass.
 """
 
 from __future__ import annotations
@@ -13,7 +12,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from ...duties import canonical_duty_name
-from ...models import ORIGIN_ADMIN, Slot, Station, Venue
+from ...models import Slot, Station, Venue
+from .. import pending
 from ..slot_ops import day_label, parse_clock, shift_label, slot_label
 from .base import Action, Plan, ValidationError, register
 
@@ -145,6 +145,7 @@ class CreateSlots(Action):
     Input = CreateSlotsInput
     template = "admin/actions/slots_create.html"
     done_endpoint = "admin.pass_tab"
+    immediate = True
 
     def parse(self, fields, files):
         if hasattr(fields, "getlist"):
@@ -224,25 +225,19 @@ class CreateSlots(Action):
             )
         plan.warnings.extend(_overlaps(session, ctx.team.id, shifts))
         plan.notes.append(
-            f"{total} {'ledig plats' if total == 1 else 'lediga platser'} att bemanna: "
-            "välj dem under Pass och tryck Bemanna."
+            f"{total} {'ledig plats väntar' if total == 1 else 'lediga platser väntar'} "
+            "på att bemannas."
         )
         plan.preview_dates.update(shift[0] for shift in shifts)
 
         team_id = ctx.team.id
-        seats_to_add = [
-            (day, start, end, station.id, station.venue.name, station.name, seats)
-            for day, start, end, station, seats in shifts
+        staged = [
+            (day, start, end, station.id, seats) for day, start, end, station, seats in shifts
         ]
 
         def write(s):
-            for day, start, end, station_id, venue, station_name, seats in seats_to_add:
-                for _ in range(seats):
-                    s.add(Slot(
-                        team_id=team_id, date=day, start_time=start, end_time=end,
-                        station=station_name, venue=venue, duty_name=activity,
-                        station_id=station_id, origin=ORIGIN_ADMIN,
-                    ))
+            for day, start, end, station_id, seats in staged:
+                s.add(pending.new_pass(team_id, activity, day, start, end, station_id, seats))
 
         plan.writes.append(write)
         return plan
