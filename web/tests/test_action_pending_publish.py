@@ -429,6 +429,56 @@ def test_a_conflicted_entry_does_not_count_for_double_booking(app, session_facto
     assert not any("har redan ett pass" in w for w in plan.warnings)
 
 
+def test_a_second_shift_on_the_same_weekend_is_warned_about_once(app, session_factory, seeded, admins, ida):
+    saturday, sunday = date(2031, 3, 1), date(2031, 3, 2)
+    a = _seat(session_factory, seeded, day=saturday)
+    b = _seat(session_factory, seeded, day=sunday)
+    c = _seat(session_factory, seeded, day=sunday, start=14)
+    for slot_id in (a, b, c):
+        _stage(app, session_factory, admins, slot_ids=[slot_id], seats={str(slot_id): str(ida)})
+
+    plan = _publish(app, session_factory, admins, apply=False)
+
+    assert plan.warnings.count("Ida Ny har redan ett pass samma helg.") == 1
+
+
+def test_a_shift_on_a_weekday_and_the_weekend_is_no_weekend_warning(app, session_factory, seeded, admins, ida):
+    friday_before = date(2031, 2, 27)   # a Thursday
+    a = _seat(session_factory, seeded, day=friday_before)
+    b = _seat(session_factory, seeded, day=date(2031, 3, 1))
+    for slot_id in (a, b):
+        _stage(app, session_factory, admins, slot_ids=[slot_id], seats={str(slot_id): str(ida)})
+
+    plan = _publish(app, session_factory, admins, apply=False)
+
+    assert not any("samma helg" in w for w in plan.warnings)
+
+
+def test_a_shift_at_the_same_time_on_another_team_is_warned_about(
+    app, session_factory, seeded, admins, second_team
+):
+    # Tova's parent already has Elsa on P13 09:00-11:00 that day.
+    busy = second_team["sibling_slot"]
+    seat = _seat(session_factory, seeded, day=busy.date, start=10)
+    _stage(app, session_factory, admins, slot_ids=[seat], seats={str(seat): str(seeded["player"].id)})
+
+    plan = _publish(app, session_factory, admins, apply=False)
+
+    assert "Tova Exempel har redan ett pass samtidigt i ett annat lag." in plan.warnings
+
+
+def test_a_shift_right_after_one_on_another_team_is_no_warning(
+    app, session_factory, seeded, admins, second_team
+):
+    busy = second_team["sibling_slot"]
+    seat = _seat(session_factory, seeded, day=busy.date, start=11)
+    _stage(app, session_factory, admins, slot_ids=[seat], seats={str(seat): str(seeded["player"].id)})
+
+    plan = _publish(app, session_factory, admins, apply=False)
+
+    assert not any("annat lag" in w for w in plan.warnings)
+
+
 def test_an_exempt_player_is_warned_about(app, session_factory, seeded, admins, ida):
     session = session_factory()
     session.get(Player, ida).exempt = True

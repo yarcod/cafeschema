@@ -47,6 +47,15 @@
 {% endif %}
 <div class="inline-form">
   <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug) }}">Tillbaka och ändra</a>
+  {% if plan.review|selectattr("drawn")|list %}
+  <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='pending.draw') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="redraw" value="1">
+    <input type="hidden" name="next" value="granska">
+    {% if not plan.notify %}<input type="hidden" name="tyst" value="1">{% endif %}
+    <button type="submit" class="btn btn-sm">Slumpa om</button>
+  </form>
+  {% endif %}
   <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='pending.discard') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="confirm" value="1">

@@ -14,9 +14,9 @@ TESTS = Path(__file__).parent
 
 def test_the_registry_has_the_v1_actions():
     assert REAL_ACTIONS == [
-        "pending.discard", "pending.edit", "pending.keep", "pending.publish", "pending.remove",
-        "pending.undo",
-        "roster.import", "schedule.import", "slots.assign",
+        "pending.discard", "pending.draw", "pending.edit", "pending.keep", "pending.publish",
+        "pending.remove", "pending.undo",
+        "roster.import", "schedule.import",
         "slots.create", "station.create", "station.link_document", "team_admins.add",
         "team_admins.remove", "venue.create",
     ]

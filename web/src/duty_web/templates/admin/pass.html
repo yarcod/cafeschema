@@ -97,6 +97,13 @@
     <tr class="event-head"><th colspan="7" scope="colgroup">
       <span class="event-title">{{ event.title }}</span>
       <span class="count">{{ event.open_seats }} {{ "ledig plats" if event.open_seats == 1 else "lediga platser" }}</span>
+      {% if event.open_seats > 0 %}
+      <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=slug, name='pending.draw') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="event" value="{{ event.key }}">
+        <button type="submit" class="btn btn-sm">Slumpa lediga</button>
+      </form>
+      {% endif %}
     </th></tr>
     {% for day in event.days %}
     <tr class="day-head"><td colspan="7" class="day">{% if day.date %}{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}{% else %}Datum ej satt{% endif %}</td></tr>

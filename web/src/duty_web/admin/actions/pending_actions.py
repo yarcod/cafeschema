@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import secrets
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date, time
+from datetime import date, time, timedelta
 
 from ...agenda import shift_key
 from ...models import (
@@ -29,7 +30,8 @@ from ...models import (
     Slot,
     Station,
 )
-from ...staffing import season_of, spread
+from ...staffing import clashes, same_weekend, season_of, spread
+from ..draw import draw_seats, shifts_elsewhere
 from ..pending import (
     FIELD_NAMES,
     Conflict,
@@ -39,6 +41,7 @@ from ..pending import (
     effective_seats,
     encode_slot,
     entry_for_seats,
+    events_of,
     staged_seats,
     team_entries,
 )
@@ -376,6 +379,8 @@ class EditPending(_Pending):
                     raise ValidationError({cell: "Platsen finns inte längre"})
                 seat["from"] = slot.player_id
             seat["to"] = player_id
+            # A name picked here is the ansvarig's, so Slumpa om leaves it be.
+            seat["drawn"] = False
 
     def _check(self, fields, seats, now) -> None:
         def effective(name):
@@ -539,6 +544,166 @@ class DiscardPending(_Pending):
         plan.writes.append(write)
         return plan
 
+@dataclass
+class DrawInput:
+    event: str | None = None
+    seed: int | None = None
+    redraw: bool = False
+
+
+@register
+class DrawPending(_Pending):
+    name = "pending.draw"
+    title = "Slumpa lediga platser"
+    Input = DrawInput
+
+    def parse(self, fields: Mapping, files) -> DrawInput:
+        inp = parse_input(self.Input, fields)
+        # Chosen here, not in plan, so the review and the apply agree.
+        if inp.seed is None:
+            inp = dataclasses.replace(inp, seed=secrets.randbelow(2**31))
+        return inp
+
+    def plan(self, session, ctx, inp: DrawInput) -> Plan:
+        team_id = ctx.team.id
+        if inp.event is None and not inp.redraw:
+            raise ValidationError({"event": "Välj ett evenemang"})
+        entries = team_entries(session, team_id)
+        live = {s.id: s for s in session.query(Slot).filter(Slot.team_id == team_id).order_by(Slot.id)}
+        players = {
+            p.id: p for p in session.query(Player).filter(Player.team_id == team_id).order_by(Player.id)
+        }
+        # A conflicted entry waits for the ansvarig, so nothing is drawn onto it.
+        held_back = {
+            seat["slot_id"] for e in entries if conflict_of(e, live, set(players)) for seat in e.seats
+        }
+        everything = effective_seats(session, team_id, skip_conflicted=True)
+        today = date.today()
+
+        def drawable(seats):
+            return [s for s in seats if s.slot_id not in held_back and (s.date is None or s.date >= today)]
+
+        # Events as the Pass page shows them (past days hidden); one with
+        # only past days left is found from the whole schedule.
+        scope = events_of(drawable(everything))
+        if inp.event is not None and inp.event not in scope:
+            scope = {k: drawable(v) for k, v in events_of(everything).items()}
+        if inp.event is not None:
+            if inp.event not in scope:
+                raise ValidationError({"event": "Okänt evenemang"})
+            chosen = scope[inp.event]
+        else:
+            chosen = [s for seats in scope.values() for s in seats]
+
+        if inp.redraw:
+            targets = [s for s in chosen if s.drawn and s.player_id is not None]
+        else:
+            targets = [s for s in chosen if s.player_id is None]
+        cleared = {s.ref: s for s in targets if s.player_id is not None}
+
+        def season_for(seat):
+            return season_of(seat.date or today)
+
+        by_season: dict[tuple, list[SeatView]] = {}
+        for seat in sorted(targets, key=lambda s: (s.date is None, s.date or date.min, s.start_time, s.ref)):
+            by_season.setdefault(season_for(seat), []).append(seat)
+        if not inp.redraw:
+            # An event across seasons is drawn one at a time, the first first.
+            by_season = dict(list(by_season.items())[:1])
+
+        plan = Plan()
+        plan.basis.extend(_entry_basis(e) for e in entries)
+        if not by_season:
+            plan.notes.append("Inga lediga platser att slumpa.")
+            return plan
+
+        families = {p.id: frozenset(parent.id for parent in p.parents) for p in players.values()}
+        current = [dataclasses.replace(s, player_id=None, drawn=False) if s.ref in cleared else s for s in everything]
+        by_ref = {s.ref: s for s in everything}
+        assignments: list[tuple[SeatView, int | None]] = []
+        pool = [p.id for p in players.values() if not p.exempt and p.parents]
+
+        for season, seats in by_season.items():
+            days = {s.date for s in seats if s.date is not None}
+            results = draw_seats(
+                seats, current, players, seed=inp.seed, season=season,
+                elsewhere=shifts_elsewhere(session, team_id, days, families),
+            )
+            before = _loads(everything, season)
+            filled = {r.slot_id: r.player_id for r in results if r.player_id is not None}
+            for r in results:
+                view = by_ref[r.slot_id]
+                label = shift_label(view.date, view.start_time, view.end_time, view.duty_name, view.station)
+                if r.player_id is None:
+                    plan.warnings.append(f"{label}: Ledigt, {r.reason}.")
+                    if view.ref in cleared:
+                        plan.add("update", "seat", f"{players[view.player_id].name} → Ledigt {label}")
+                        assignments.append((view, None))
+                    continue
+                plan.add("update", "seat", f"{players[r.player_id].name} → {label}")
+                assignments.append((view, r.player_id))
+            current = [dataclasses.replace(s, player_id=filled[s.ref]) if s.ref in filled else s for s in current]
+            after = _loads(current, season)
+            suffix = f" ({season[0].year}/{season[1].year % 100:02d})" if len(by_season) > 1 else ""
+            gaining = sorted(
+                (pid for pid in set(filled.values()) if before[pid] != after[pid]),
+                key=lambda i: (players[i].name, i),
+            )
+            plan.notes.extend(f"{players[pid].name}: {before[pid]} → {after[pid]} pass{suffix}" for pid in gaining)
+            mean, width = spread(after[pid] for pid in pool)
+            mean_text = f"{mean:.1f}".replace(".", ",")
+            plan.notes.append(f"Laget: i snitt {mean_text} pass per spelare, spridning {width}{suffix}.")
+
+        plan.basis.extend(slot_basis(live[v.slot_id]) for v, _ in assignments if v.slot_id in live)
+        plan.preview_dates.update(v.date for v, _ in assignments if v.date is not None)
+        plan.preview_undated = any(v.date is None for v, _ in assignments)
+
+        def write(s):
+            rows: dict = {}
+            for view, player_id in assignments:
+                if view.entry_id is not None:
+                    key = view.entry_id
+                    if key not in rows:
+                        row = s.get(PendingPass, key)
+                        rows[key] = (row, copy.deepcopy(row.seats), False)
+                else:
+                    key = ("live", shift_key(view))
+                    if key not in rows:
+                        row = edit_entry(team_id, _shift_of(s, team_id, [view.slot_id]))
+                        rows[key] = (row, copy.deepcopy(row.seats), True)
+                row, seats, _ = rows[key]
+                if row.kind == PENDING_NEW:
+                    seat = seats[-view.ref - row.id * 1000 - 1]
+                else:
+                    seat = next(x for x in seats if x["slot_id"] == view.slot_id)
+                    if seat["to"] == seat["from"]:
+                        # Unstaged: follow the live Pass, as pending.edit does.
+                        seat["from"] = seat["to"] = s.get(Slot, view.slot_id).player_id
+                seat["to"] = player_id
+                seat["drawn"] = player_id is not None and player_id != seat["from"]
+            for row, seats, created in rows.values():
+                idle = row.kind == PENDING_EDIT and not row.fields and all(x["to"] == x["from"] for x in seats)
+                if idle:
+                    if not created:
+                        s.delete(row)
+                    continue
+                row.seats = seats
+                if created:
+                    s.add(row)
+
+        if assignments:
+            plan.writes.append(write)
+        return plan
+
+
+def _loads(seats: list[SeatView], season: tuple[date, date]) -> Counter:
+    first, last = season
+    return Counter(
+        s.player_id for s in seats
+        if s.player_id is not None and (s.date is None or first <= s.date <= last)
+    )
+
+
 _OPS = {PENDING_EDIT: "update", PENDING_NEW: "add", PENDING_REMOVE: "delete"}
 _CONFLICT_LABELS = {
     "date": "datum", "start_time": "tid", "end_time": "tid",
@@ -619,6 +784,36 @@ def _double_bookings(seats: list[SeatView], touched: set[int], players) -> list[
         if {s.ref for s in group} & touched and len({shift_key(s) for s in group}) > 1:
             found.append((when, players[player_id].name))
     return [f"{name} har redan ett pass {day_label(when)}." for when, name in sorted(found)]
+
+
+def _crowded(session, team_id: int, placed: list[SeatView], seats: list[SeatView], players) -> list[str]:
+    """Warnings for a newly placed player who has a shift that weekend, or at
+    the same time on another team. The draw avoids both; a hand pick may not."""
+    held: defaultdict = defaultdict(list)
+    for seat in seats:
+        if seat.player_id in players and seat.date is not None:
+            held[seat.player_id].append(seat)
+    families = {p.id: frozenset(parent.id for parent in p.parents) for p in players.values()}
+    elsewhere = shifts_elsewhere(session, team_id, {v.date for v in placed if v.date is not None}, families)
+    weekends: set[tuple[date, str]] = set()
+    parallel: set[str] = set()
+    for view in placed:
+        if view.date is None or view.player_id not in players:
+            continue
+        name = players[view.player_id].name
+        # The same day is _double_bookings' to say.
+        others = [
+            s.date for s in held[view.player_id]
+            if shift_key(s) != shift_key(view) and s.date != view.date
+        ]
+        if same_weekend(view.date, others):
+            weekends.add((view.date - timedelta(days=view.date.weekday()), name))
+        if clashes(view.date, view.start_time, view.end_time, elsewhere[view.player_id]):
+            parallel.add(name)
+    return [
+        *(f"{name} har redan ett pass samma helg." for _, name in sorted(weekends)),
+        *(f"{name} har redan ett pass samtidigt i ett annat lag." for name in sorted(parallel)),
+    ]
 
 
 def _overlaps(heads: list[tuple[int, SeatView]], seats: list[SeatView]) -> list[str]:
@@ -715,6 +910,7 @@ class PublishPending(_Pending):
         new_heads: list[tuple[int, SeatView]] = []
         # Who gets a seat, and on which days.
         placed: dict[int, list] = {}
+        placed_seats: list[SeatView] = []
         held_back = 0
 
         def preview(*days) -> None:
@@ -774,6 +970,7 @@ class PublishPending(_Pending):
                     if player is not None:
                         touched.add(view.ref)
                         placed.setdefault(player.id, []).append(head.date)
+                        placed_seats.append(view)
                     additions.append({
                         "team_id": team_id, "date": head.date, "start_time": head.start_time,
                         "end_time": head.end_time, "station": head.station, "venue": head.venue,
@@ -803,6 +1000,7 @@ class PublishPending(_Pending):
                     changed.append(slot.id)
                 if seat["to"] != seat["from"] and seat["to"] is not None:
                     placed.setdefault(seat["to"], []).append(after.date)
+                    placed_seats.append(after)
                 if "date" in changes or "player_id" in changes:
                     touched.add(after.ref)
 
@@ -812,6 +1010,7 @@ class PublishPending(_Pending):
         # Conflicted entries stay väntande, so everything below counts them as live.
         effective = effective_seats(session, team_id, skip_conflicted=True)
         plan.warnings.extend(_double_bookings(effective, touched, players))
+        plan.warnings.extend(_crowded(session, team_id, placed_seats, effective, players))
         plan.warnings.extend(
             f"{players[pid].name} är undantagen (ledarfamilj)."
             for pid in sorted(placed, key=lambda i: (players[i].name, i)) if players[pid].exempt
