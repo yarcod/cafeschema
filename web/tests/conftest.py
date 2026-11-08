@@ -284,6 +284,7 @@ def _fresh_rate_limits():
 
     ratelimit.api_limiter.reset()
     ratelimit.admin_limiter.reset()
+    ratelimit.pending_limiter.reset()
 
 
 def bearer(key):

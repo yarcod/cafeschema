@@ -6,5 +6,5 @@ here so both doors see the same registry.
 
 from .base import REGISTRY, register  # noqa: F401
 from . import (  # noqa: F401,E402
-    places, roster_import, schedule_import, slot_edit, slots_assign, slots_create, team_admins,
+    pending_actions, places, roster_import, schedule_import, slot_edit, slots_assign, slots_create, team_admins,
 )

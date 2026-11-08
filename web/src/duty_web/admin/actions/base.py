@@ -109,6 +109,9 @@ class Action:
     refinable: ClassVar[bool] = False
     # Granska offers "Slumpa om", which re-plans with a new seed.
     reshuffle: ClassVar[bool] = False
+    # Writes only väntande data, so the HTML door applies it without a Granska.
+    immediate: ClassVar[bool] = False
+    review_template: ClassVar[str] = "admin/granska.html"
 
     def refine(self, inp: Any, fields: Mapping[str, Any]) -> Any:
         """The reviewed input plus Granska's answers (or a new seed)."""

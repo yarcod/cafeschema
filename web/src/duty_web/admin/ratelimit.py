@@ -34,3 +34,6 @@ class RateLimiter:
 
 api_limiter = RateLimiter(120, 60)
 admin_limiter = RateLimiter(60, 60)
+# Autosave posts once per edited cell, so a ansvarig filling in a season sends
+# hundreds in a minute. Those write only väntande data and get their own room.
+pending_limiter = RateLimiter(600, 60)

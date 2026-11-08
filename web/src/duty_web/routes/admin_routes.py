@@ -11,6 +11,7 @@ from flask import (
     Blueprint,
     abort,
     current_app,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -25,8 +26,10 @@ from ..admin import ratelimit
 from ..agenda import group_days, group_shifts
 from ..admin.api_keys import revoke_api_key
 from ..admin.actions import REGISTRY
+from ..admin.actions.pending_actions import staged_row
 from ..admin.actions.base import Action, NearDuplicate, ValidationError, fields_schema, mutable
 from ..admin.executor import apply_plan, dry_run, preview, scope_allows
+from ..admin.pending import pending_count
 from ..admin.permissions import AdminContext, admin_context, admin_teams
 from ..admin.plan_tokens import PlanTokenError, read_plan_token
 from ..admin.slot_ops import pending_slot_ids
@@ -57,8 +60,10 @@ def _action(ctx: AdminContext, name: str) -> Action:
     return action
 
 
-def _throttle() -> None:
-    if not ratelimit.admin_limiter.allow(("web", int(current_user.id))):
+def _throttle(action: Action | None = None) -> None:
+    # Autosave posts once per cell and writes only väntande data.
+    limiter = ratelimit.pending_limiter if action is not None and action.immediate else ratelimit.admin_limiter
+    if not limiter.allow(("web", int(current_user.id))):
         abort(429)
 
 
@@ -194,17 +199,37 @@ def do_action(slug: str, name: str):
 
     if request.method == "GET":
         return form({})
-    _throttle()
+    _throttle(action)
+    autosave = action.immediate and request.headers.get("X-Autosave") == "1"
+    key = current_app.config["SECRET_KEY"]
     try:
         inp = action.parse(request.form, request.files)
-        plan, token = dry_run(
-            session, ctx, action, inp, secret_key=current_app.config["SECRET_KEY"]
-        )
+        plan, token = dry_run(session, ctx, action, inp, secret_key=key)
+        if action.immediate:
+            apply_plan(session, ctx, token, secret_key=key, via="webb")
+            return _staged_response(session, ctx, inp, autosave)
     except ValidationError as exc:
+        if autosave:
+            return jsonify({"errors": exc.errors}), 400
         return form(exc.errors, 400)
+    except PlanTokenError as exc:
+        if autosave:
+            return jsonify({"error": exc.code}), exc.status
+        if exc.status == 404:
+            abort(404)
+        return render_template("admin/stale.html", ctx=ctx, code=exc.code), exc.status
     except NearDuplicate as exc:
         return form({exc.field: f"Finns redan: {exc.existing_name}. Välj den i stället."}, 409)
     return _granska(session, ctx, action, plan, token)
+
+
+def _staged_response(session, ctx: AdminContext, inp, autosave: bool):
+    if not autosave:
+        return redirect(url_for("admin.pass_tab", slug=ctx.team.slug))
+    return jsonify({
+        "pending": pending_count(session, ctx.team.id),
+        "row": staged_row(session, ctx.team.id, inp),
+    })
 
 
 @admin_bp.route("/<slug>/genomfor", methods=["POST"])
