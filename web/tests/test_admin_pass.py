@@ -85,11 +85,11 @@ def test_rows_show_the_staged_value_under_the_staged_date(
     page = client.get("/admin/f14-bla/pass").get_data(as_text=True)
 
     heading = page.index(f"{short_date_sv(moved)}</td>")
-    under_it = page[heading:].split('class="day-head"')[0]
+    under_it = page[heading:].split('class="pass-day-head"')[0]
     assert f'name="seat-{slot.id}"' in under_it and f'value="{moved.isoformat()}"' in under_it
     # The neighbour's Pass stays under the live day; the staged one has left it.
     old = page.index(f"{short_date_sv(slot.date)}</td>")
-    assert f'name="seat-{slot.id}"' not in page[old:].split('class="day-head"')[0]
+    assert f'name="seat-{slot.id}"' not in page[old:].split('class="pass-day-head"')[0]
 
 
 def test_a_removed_row_is_struck_through(client, app, session_factory, admins, seeded):
@@ -337,3 +337,20 @@ def test_the_import_page_points_to_the_template(client, admins):
     page = client.get("/admin/f14-bla/do/schedule.import").get_data(as_text=True)
 
     assert "/admin/f14-bla/pass/mall.xlsx" in page
+
+
+def test_the_day_heading_keeps_clear_of_the_calendars_styles(client, admins, seeded):
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/pass").get_data(as_text=True)
+
+    assert re.search(r'<tr class="pass-day-head"><td colspan="\d" class="pass-day">', page)
+    assert 'class="day"' not in page and 'class="day-head"' not in page
+
+
+def test_seat_selects_are_labelled_by_player(client, admins, seeded):
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/pass").get_data(as_text=True)
+
+    assert 'aria-label="Spelare 1"' in page and 'aria-label="Plats 1"' not in page

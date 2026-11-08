@@ -1,4 +1,5 @@
-// Autosave for the Pass table: each changed cell is staged as väntande at once.
+// Autosave for the Pass table: each changed cell is staged as väntande at once
+// (start and end as a pair).
 // Nothing else happens here; without JavaScript every row posts as a whole.
 (function () {
   'use strict';
@@ -31,6 +32,7 @@
       var link = document.createElement('a');
       link.className = 'btn btn-primary';
       link.href = table.getAttribute('data-granska');
+      link.setAttribute('data-save-first', '');
       link.textContent = 'Granska';
       actions.appendChild(link);
       bar.appendChild(text);
@@ -51,30 +53,59 @@
     });
   }
 
-  function say(tr, message) {
-    tr.querySelector('.row-alert').textContent = message;
+  // Refused cells, per row, so a later save elsewhere on the row doesn't hide one.
+  var refused = new WeakMap();
+  var refusals = 0;
+
+  function settle(tr, group, message) {
+    var messages = refused.get(tr) || {};
+    refused.set(tr, messages);
+    if (message) {
+      messages[group.key] = message;
+      refusals += 1;
+    } else {
+      delete messages[group.key];
+    }
+    group.inputs.forEach(function (input) {
+      input.closest('.cell').classList.toggle('cell-err', Boolean(message));
+    });
+    var left = Object.keys(messages).map(function (key) { return messages[key]; });
+    tr.querySelector('.row-alert').textContent = left.join(' ');
+  }
+
+  // Start and end are saved together, each checked against the other's new value.
+  function saveGroup(input, tr) {
+    if (input.name === 'start' || input.name === 'end') {
+      return {
+        key: 'time',
+        inputs: [tr.querySelector('input[name="start"]'), tr.querySelector('input[name="end"]')]
+      };
+    }
+    return { key: input.name, inputs: [input] };
   }
 
   function send(input) {
     var form = input.form;
     var tr = input.closest('tr');
+    var group = saveGroup(input, tr);
     var data = new FormData();
-    // The row's identity, never its other cells: only the changed field is staged.
+    // The row's identity and the cells being saved: the row's other cells stay out of it.
     ['csrf_token', 'slot_ids', 'entry_id'].forEach(function (name) {
       form.querySelectorAll('input[name="' + name + '"]').forEach(function (hidden) {
         data.append(name, hidden.value);
       });
     });
-    data.append(input.name, input.value);
+    group.inputs.forEach(function (cell) { data.append(cell.name, cell.value); });
     return fetch(form.action, {
       method: 'POST',
       body: data,
       credentials: 'same-origin',
+      keepalive: true,
       headers: { 'X-Autosave': '1', 'Accept': 'application/json' }
     }).then(function (response) {
       if (response.status === 200) {
         return response.json().then(function (body) {
-          say(tr, '');
+          settle(tr, group, '');
           paintRow(tr, body.row);
           paintBar(body.pending);
         });
@@ -83,12 +114,12 @@
         return response.json().then(function (body) {
           var errors = body.errors || {};
           var first = Object.keys(errors)[0];
-          say(tr, first ? errors[first] : GENERIC);
+          settle(tr, group, first ? errors[first] : GENERIC);
         });
       }
-      say(tr, response.status === 409 ? STALE : GENERIC);
+      settle(tr, group, response.status === 409 ? STALE : GENERIC);
     }).catch(function () {
-      say(tr, GENERIC);
+      settle(tr, group, GENERIC);
     });
   }
 
@@ -98,6 +129,29 @@
     if (!input.closest('.pass-row')) return;
     // One request at a time: two quick edits on a row must stage in order.
     queue = queue.then(function () { return send(input); });
+  });
+
+  // Leaving the page must wait for the last cell. A save refused while
+  // waiting keeps the page, so its message isn't lost with it.
+  function afterSaves(go) {
+    var before = refusals;
+    queue.then(function () {
+      if (refusals === before) go();
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest('a[data-save-first]');
+    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    afterSaves(function () { window.location.href = link.href; });
+  });
+
+  table.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form.hasAttribute('data-save-first')) return;
+    event.preventDefault();
+    afterSaves(function () { form.submit(); });
   });
 
   // Enter would press the row's first button, Ta bort. Leaving the cell is what saves.

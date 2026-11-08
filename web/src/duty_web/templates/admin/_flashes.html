@@ -1,0 +1,3 @@
+{% for category, text in get_flashed_messages(with_categories=true) %}
+<div class="{{ 'warn-note' if category == 'warn' else 'notice' }}">{{ text }}</div>
+{% endfor %}

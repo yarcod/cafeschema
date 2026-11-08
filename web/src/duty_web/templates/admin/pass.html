@@ -45,7 +45,7 @@
     {% for seat in row.seats %}
     <span class="seat">
       <span class="cell{{ ' cell-ch' if seat.changed }}" data-field="seat-{{ seat.key }}">
-        <select name="seat-{{ seat.key }}" form="{{ fid }}" class="admin-input" aria-label="Plats {{ loop.index }}" {{ off }}>
+        <select name="seat-{{ seat.key }}" form="{{ fid }}" class="admin-input" aria-label="Spelare {{ loop.index }}" {{ off }}>
           <option value="">Ledigt</option>
           {% for p in players %}<option value="{{ p.id }}" {{ "selected" if p.id == seat.player_id }}>{{ p.name }}{{ " (ledarfamilj)" if p.exempt }}</option>{% endfor %}
         </select>
@@ -55,10 +55,9 @@
     </span>
     {% endfor %}
   </td>
-  <td>
+  <td class="c-note">
     <span class="cell{{ ' cell-ch' if 'note' in row.changed }}" data-field="note"><input name="note" form="{{ fid }}" class="admin-input note" value="{{ row.note or '' }}" placeholder="Anteckning" aria-label="Anteckning" {{ off }}></span>
-  </td>
-  <td class="c-actions">
+    <div class="row-actions">
     {% if row.status in ("live", "edit", "new") %}
     <button type="submit" form="{{ fid }}" formaction="{{ url_for('admin.do_action', slug=slug, name='pending.remove') }}" class="btn btn-sm">Ta bort</button>
     {% endif %}
@@ -67,11 +66,13 @@
     {% endif %}
     {% if row.conflict %}<span class="flag-note">Behöver ses över</span>{% endif %}
     <span class="row-alert field-error" role="alert"></span>
+    </div>
   </td>
 </tr>
 {% endmacro %}
 
 {% if done %}<div class="notice">Klart. Ändringen är genomförd.</div>{% endif %}
+{% include "admin/_flashes.html" %}
 <div class="section-head">
   <h2>Pass</h2>
   <span class="count">{{ open_seats }} {{ "ledig plats" if open_seats == 1 else "lediga platser" }}</span>
@@ -91,15 +92,15 @@
 <div class="pass-scroll">
 <table class="pass-table" data-granska="{{ url_for('admin.granska_batch', slug=slug) }}">
   <thead>
-    <tr><th><span class="visually-hidden">Status</span></th><th>Datum</th><th>Tid</th><th>Plats</th><th>Spelare</th><th>Anteckning</th><th><span class="visually-hidden">Åtgärder</span></th></tr>
+    <tr><th><span class="visually-hidden">Status</span></th><th>Datum</th><th>Tid</th><th>Plats</th><th>Spelare</th><th>Anteckning <span class="visually-hidden">och åtgärder</span></th></tr>
   </thead>
   {% for event in events %}
   <tbody>
-    <tr class="event-head"><th colspan="7" scope="colgroup">
+    <tr class="event-head"><th colspan="6" scope="colgroup">
       <span class="event-title">{{ event.title }}</span>
       <span class="count">{{ event.open_seats }} {{ "ledig plats" if event.open_seats == 1 else "lediga platser" }}</span>
       {% if event.open_seats > 0 %}
-      <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=slug, name='pending.draw') }}">
+      <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=slug, name='pending.draw') }}" data-save-first>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="event" value="{{ event.key }}">
         <button type="submit" class="btn btn-sm">Slumpa lediga</button>
@@ -107,7 +108,7 @@
       {% endif %}
     </th></tr>
     {% for day in event.days %}
-    <tr class="day-head"><td colspan="7" class="day">{% if day.date %}{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}{% else %}Datum ej satt{% endif %}</td></tr>
+    <tr class="pass-day-head"><td colspan="6" class="pass-day">{% if day.date %}{{ day.date|weekday_sv|capitalize }} {{ day.date|short_date_sv }}{% else %}Datum ej satt{% endif %}</td></tr>
     {% for row in day.rows %}{{ pass_row(row) }}{% endfor %}
     {% endfor %}
   </tbody>
@@ -120,7 +121,7 @@
 {% if pending %}
 <div class="pending-bar" data-pending-bar>
   <span class="pending-text" data-pending-text>{{ pending }} {{ "väntande ändring" if pending == 1 else "väntande ändringar" }}, inga mejl skickade</span>
-  <span class="pending-actions"><a class="btn btn-primary" href="{{ url_for('admin.granska_batch', slug=slug) }}">Granska</a></span>
+  <span class="pending-actions"><a class="btn btn-primary" href="{{ url_for('admin.granska_batch', slug=slug) }}" data-save-first>Granska</a></span>
 </div>
 {% endif %}
 <p class="agent-hint">agent → <b>GET /admin/api/slots?team={{ slug }}</b></p>
