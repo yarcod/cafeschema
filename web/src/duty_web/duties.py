@@ -16,6 +16,7 @@ Platser, where it can change without a deploy.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass(frozen=True)
@@ -70,3 +71,37 @@ def profile_for(name: str | None) -> DutyProfile | None:
     canonical = canonical_duty_name(name)
     key = _BY_KEY.get(canonical.casefold())
     return DUTY_PROFILES[key] if key is not None else None
+
+
+@dataclass(frozen=True)
+class WeekendPattern:
+    """A repeating set of sessions: what a weekend of one duty looks like."""
+
+    name: str
+    title: str
+    activity: str
+    sessions: dict[int, tuple[tuple[str, str], ...]]  # weekday (Mon=0) -> (start, end)
+    seats: int
+    seat_choices: tuple[int, ...]
+
+
+# The Saturday and Sunday sessions of the café weekend are the same five.
+CAFE_SATURDAY = (("08:30", "10:30"), ("10:30", "12:30"), ("12:30", "14:30"),
+                 ("14:30", "16:30"), ("16:30", "18:30"))
+
+PATTERNS: dict[str, WeekendPattern] = {
+    "cafe_weekend": WeekendPattern(
+        name="cafe_weekend", title="Cafépass, helg", activity="Cafépass",
+        sessions={4: (("17:30", "19:30"),), 5: CAFE_SATURDAY, 6: CAFE_SATURDAY},
+        seats=2, seat_choices=(2, 3),
+    ),
+}
+
+
+def pattern_sessions(pattern: WeekendPattern, days: list[date]) -> list[tuple[date, str, str]]:
+    """The pattern's sessions on the given days; days it has none for add nothing."""
+    return [
+        (day, start, end)
+        for day in sorted(days)
+        for start, end in pattern.sessions.get(day.weekday(), ())
+    ]

@@ -17,7 +17,7 @@ def test_the_registry_has_the_v1_actions():
         "pending.discard", "pending.draw", "pending.edit", "pending.keep", "pending.publish",
         "pending.remove", "pending.undo",
         "roster.import", "schedule.import",
-        "slots.create", "station.create", "station.link_document", "team_admins.add",
+        "slots.create", "slots.from_pattern", "station.create", "station.link_document", "team_admins.add",
         "team_admins.remove", "venue.create",
     ]
 

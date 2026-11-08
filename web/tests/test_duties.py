@@ -1,6 +1,8 @@
 """The duty knowledge the trainer's schedule file doesn't carry."""
 
-from duty_web.duties import canonical_duty_name, profile_for
+from datetime import date, timedelta
+
+from duty_web.duties import PATTERNS, canonical_duty_name, pattern_sessions, profile_for
 
 
 def test_the_cup_is_staffed_in_molnlycke_idrottshall():
@@ -47,3 +49,33 @@ def test_a_slot_still_carrying_the_old_name_finds_its_profile():
 def test_a_duty_we_know_nothing_about_has_no_profile():
     assert profile_for("Åby Julmarknad") is None
     assert profile_for("") is None
+
+
+FRI, SAT, SUN = date(2026, 11, 20), date(2026, 11, 21), date(2026, 11, 22)
+
+
+def test_a_fri_sun_span_generates_exactly_eleven_sessions():
+    got = pattern_sessions(PATTERNS["cafe_weekend"], [FRI, SAT, SUN])
+
+    assert len(got) == 11
+    assert got[0] == (FRI, "17:30", "19:30")
+    assert [(s, e) for d, s, e in got if d == SAT] == [
+        ("08:30", "10:30"), ("10:30", "12:30"), ("12:30", "14:30"), ("14:30", "16:30"), ("16:30", "18:30")]
+
+
+def test_a_wider_span_only_uses_fri_sat_sun():
+    week = [date(2026, 11, 16) + timedelta(days=n) for n in range(7)]
+
+    assert len(pattern_sessions(PATTERNS["cafe_weekend"], week)) == 11
+
+
+def test_a_sat_sun_span_has_no_friday():
+    got = pattern_sessions(PATTERNS["cafe_weekend"], [SAT, SUN])
+
+    assert len(got) == 10 and FRI not in {d for d, _, _ in got}
+
+
+def test_two_weekends_in_one_span_make_two_sets():
+    days = [FRI + timedelta(days=n) for n in range(10)]
+
+    assert len(pattern_sessions(PATTERNS["cafe_weekend"], days)) == 22

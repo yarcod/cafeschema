@@ -16,6 +16,7 @@ from sqlalchemy import func
 
 from ..admin import ratelimit
 from ..admin.actions import REGISTRY
+from ..admin.actions.slots_create import WEEKDAY_KEYS
 from ..admin.actions.base import NearDuplicate, ValidationError, fields_schema
 from ..admin.api_keys import authenticate
 from ..admin.executor import apply_plan, dry_run, scope_allows
@@ -24,6 +25,7 @@ from ..admin.plan_tokens import PlanTokenError
 from ..admin.slot_ops import pending_slot_ids
 from ..admin.redact import KEY_PATTERN
 from ..models import ApiKey, Player, Slot, TeamRole, Venue
+from ..duties import PATTERNS
 from ..places import linkable_documents
 from ..roster import public_name
 from ..session_scope import get_session as _session
@@ -101,6 +103,19 @@ def discovery():
     ctx = _context(_key(), None)
     return jsonify({
         "teams": [team.slug for team in ctx.teams],
+        "patterns": {
+            name: {
+                "title": pattern.title,
+                "activity": pattern.activity,
+                "sessions": {
+                    WEEKDAY_KEYS[weekday]: [list(pair) for pair in pairs]
+                    for weekday, pairs in sorted(pattern.sessions.items())
+                },
+                "seats": pattern.seats,
+                "seat_choices": list(pattern.seat_choices),
+            }
+            for name, pattern in PATTERNS.items()
+        },
         "actions": {
             name: {
                 "title": action.title,

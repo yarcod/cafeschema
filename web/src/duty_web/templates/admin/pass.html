@@ -77,7 +77,8 @@
   <span class="count">{{ open_seats }} {{ "ledig plats" if open_seats == 1 else "lediga platser" }}</span>
 </div>
 <div class="inline-form">
-  <a class="btn btn-primary" href="{{ url_for('admin.do_action', slug=slug, name='slots.create') }}">+ Lägg till pass</a>
+  <a class="btn btn-primary" href="{{ url_for('admin.do_action', slug=slug, name='slots.from_pattern') }}">+ Lägg till cafépass</a>
+  <a class="btn" href="{{ url_for('admin.do_action', slug=slug, name='slots.create') }}">+ Lägg till pass</a>
   <a class="btn" href="{{ url_for('admin.do_action', slug=slug, name='schedule.import') }}">Importera Excel</a>
   <a class="btn btn-sm" href="{{ url_for('admin.pass_template', slug=slug) }}">Ladda ned Excel-mall</a>
   {% if include_past %}

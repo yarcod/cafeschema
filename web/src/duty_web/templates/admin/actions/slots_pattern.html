@@ -1,0 +1,67 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Lägg till cafépass{% endblock %}
+{% block content %}
+{% set slug = ctx.team.slug %}
+<div class="section-head"><h2>Lägg till cafépass</h2></div>
+<form class="card" method="post" action="{{ url_for('admin.do_action', slug=slug, name=action.name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="pattern" value="{{ pattern.name }}">
+  <div class="card-head">
+    <h3>Helg</h3>
+    <span class="inline-form">
+      <a class="btn btn-sm" href="{{ url_for('admin.do_action', slug=slug, name=action.name, date_from=next_weekend[1], date_to=next_weekend[2]) }}">Nästa helg</a>
+      {% for label, start, end in chips %}
+      <a class="btn btn-sm{{ ' btn-primary' if form.get('date_from') == start and form.get('date_to') == end }}" href="{{ url_for('admin.do_action', slug=slug, name=action.name, date_from=start, date_to=end) }}">{{ label }}</a>
+      {% endfor %}
+    </span>
+  </div>
+  <div class="inline-form">
+    <label class="field"><span class="field-label">Från</span>
+      <input type="date" name="date_from" class="admin-input" value="{{ form.get('date_from', '') }}"></label>
+    <label class="field"><span class="field-label">Till</span>
+      <input type="date" name="date_to" class="admin-input" value="{{ form.get('date_to', '') }}"></label>
+  </div>
+  {% for key in ("days", "date_from", "date_to", "pattern") %}
+    {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
+  {% endfor %}
+  <p class="hint">Ändra datumen och öppna sidan igen (eller välj en helg ovan) för att fylla i passen.</p>
+  <div class="inline-form">
+    <label class="field"><span class="field-label">Plats</span>
+      <select name="station_id" class="admin-input">
+        <option value="">Välj plats</option>
+        {% for value, label in stations %}<option value="{{ value }}" {{ "selected" if value|string == chosen_station }}>{{ label }}</option>{% endfor %}
+      </select>
+      {% if errors.get("station_id") %}<span class="field-error">{{ errors["station_id"] }}</span>{% endif %}
+    </label>
+    <fieldset class="field"><legend class="field-label">Föräldrar per pass</legend>
+      {% for n in pattern.seat_choices %}
+      <label><input type="radio" name="seats" value="{{ n }}" {{ "checked" if n|string == chosen_seats }}> {{ n }}</label>
+      {% endfor %}
+      {% if errors.get("seats") %}<span class="field-error">{{ errors["seats"] }}</span>{% endif %}
+    </fieldset>
+  </div>
+  {% if errors.get("rows") %}<span class="field-error">{{ errors["rows"] }}</span>{% endif %}
+  <div class="pattern-days" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:12px">
+    {% for day, rows in columns %}
+    <div class="card">
+      <h3>{% if day %}{{ day|weekday_sv|capitalize }} {{ day|short_date_sv }}{% else %}Okänd dag{% endif %}</h3>
+      {% for row in rows %}
+      <div class="inline-form">
+        <input type="hidden" name="row-{{ row.i }}-day" value="{{ row.day.isoformat() if row.day else '' }}">
+        <input name="row-{{ row.i }}-start" class="admin-input time" value="{{ row.start }}" aria-label="Start">
+        <span>–</span>
+        <input name="row-{{ row.i }}-end" class="admin-input time" value="{{ row.end }}" aria-label="Slut">
+        <label><input type="checkbox" name="row-{{ row.i }}-skip" value="1" {{ "checked" if row.skip }}> Ta bort</label>
+      </div>
+      {% for part in ("day", "start", "end") %}
+        {% set key = "rows[%d].%s" % (row.i, part) %}
+        {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
+      {% endfor %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  <button type="submit" class="btn btn-primary">Lägg till {{ count }} pass som väntande</button>
+  <p class="agent-hint">agent → <b>slots.from_pattern</b> med <b>date_from</b>/<b>date_to</b>, valfritt <b>station_id</b>, <b>seats</b> och <b>rows</b></p>
+</form>
+{% endblock %}
