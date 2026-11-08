@@ -95,7 +95,7 @@ def _phone(session, ctx: AdminContext, plan) -> Markup | None:
 
 def _granska(session, ctx: AdminContext, action: Action, plan, token: str):
     return render_template(
-        "admin/granska.html", ctx=ctx, action=action, plan=plan, plan_token=token,
+        action.review_template, ctx=ctx, action=action, plan=plan, plan_token=token,
         phone=_phone(session, ctx, plan),
     )
 
@@ -224,12 +224,32 @@ def do_action(slug: str, name: str):
 
 
 def _staged_response(session, ctx: AdminContext, inp, autosave: bool):
-    if not autosave:
-        return redirect(url_for("admin.pass_tab", slug=ctx.team.slug))
-    return jsonify({
-        "pending": pending_count(session, ctx.team.id),
-        "row": staged_row(session, ctx.team.id, inp),
-    })
+    if autosave:
+        return jsonify({
+            "pending": pending_count(session, ctx.team.id),
+            "row": staged_row(session, ctx.team.id, inp),
+        })
+    # Compared with one literal, so a posted value can never pick the target.
+    if request.form.get("next") == "granska":
+        mute = {"tyst": 1} if request.form.get("tyst") else {}
+        return redirect(url_for("admin.granska_batch", slug=ctx.team.slug, **mute))
+    return redirect(url_for("admin.pass_tab", slug=ctx.team.slug))
+
+
+@admin_bp.route("/<slug>/granska")
+@login_required
+def granska_batch(slug: str):
+    """The team's whole väntande batch, ready for one Genomför."""
+    ctx = _context(slug)
+    action = _action(ctx, "pending.publish")
+    session = _session()
+    inp = action.Input(notify=not request.args.get("tyst"))
+    try:
+        plan, token = dry_run(session, ctx, action, inp, secret_key=current_app.config["SECRET_KEY"])
+    except ValidationError:
+        # Publish refuses only an empty batch: nothing to review here.
+        return redirect(url_for("admin.pass_tab", slug=slug))
+    return _granska(session, ctx, action, plan, token)
 
 
 @admin_bp.route("/<slug>/genomfor", methods=["POST"])

@@ -7,6 +7,7 @@ from datetime import date, time
 from duty_web.admin.pending import (
     SeatView,
     conflict_of,
+    edit_entry,
     effective_seats,
     encode_slot,
     events_of,
@@ -242,3 +243,19 @@ def test_encode_slot_uses_the_stored_field_forms(session_factory, seeded):
         "date": "2027-03-05", "start_time": "18:00", "end_time": "21:00",
         "station_id": None, "note": None,
     }
+
+
+def test_a_seat_nobody_staged_follows_a_swap_in_the_effective_schedule(session_factory, seeded):
+    session = session_factory()
+    team_id = seeded["team"].id
+    other = make_family(session, session.get(Team, team_id), "Ida Annan", [("Iris Annan", "iris@exempel.se")])
+    slot = session.get(Slot, seeded["slot"].id)
+    entry = edit_entry(team_id, [slot])
+    entry.fields = {"start_time": {"from": "18:00", "to": "17:30"}}
+    session.add(entry)
+    slot.player_id = other.id
+    session.commit()
+
+    (seat,) = [s for s in effective_seats(session, team_id) if s.entry_id == entry.id]
+
+    assert seat.player_id == other.id and seat.start_time == time(17, 30)

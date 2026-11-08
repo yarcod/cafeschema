@@ -138,7 +138,8 @@ def _apply_fields(view: SeatView, entry, stations: dict[int, Station]) -> SeatVi
     return view
 
 
-def _staged_seats(entry, live: dict[int, Slot], stations: dict[int, Station]) -> list[SeatView]:
+def staged_seats(entry, live: dict[int, Slot], stations: dict[int, Station]) -> list[SeatView]:
+    """The entry's seats as they would be published; a deleted live seat is left out."""
     if entry.kind == PENDING_NEW:
         blank = SeatView(
             ref=0, slot_id=None, entry_id=entry.id, date=None, start_time=time(0),
@@ -161,7 +162,10 @@ def _staged_seats(entry, live: dict[int, Slot], stations: dict[int, Station]) ->
             continue
         view = _apply_fields(_view(slot), entry, stations)
         view.entry_id = entry.id
-        view.player_id = seat["to"]
+        # A seat nobody staged keeps following the live Pass: a swap made
+        # since staging is no conflict, so the old owner must not reappear.
+        if seat["to"] != seat["from"]:
+            view.player_id = seat["to"]
         view.drawn = seat["drawn"]
         out.append(view)
     return out
@@ -180,7 +184,7 @@ def effective_seats(session: Session, team_id: int, *, skip_conflicted: bool = F
             continue
         replaced.update(s["slot_id"] for s in entry.seats if s["slot_id"] is not None)
         if entry.kind != PENDING_REMOVE:
-            staged.extend(_staged_seats(entry, live, stations))
+            staged.extend(staged_seats(entry, live, stations))
     untouched = [_view(slot) for slot_id, slot in live.items() if slot_id not in replaced]
     return untouched + staged
 

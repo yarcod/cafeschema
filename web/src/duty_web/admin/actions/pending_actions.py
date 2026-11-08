@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, time
 
 from ...agenda import shift_key
 from ...models import (
+    ORIGIN_ADMIN,
     PENDING_EDIT,
     PENDING_NEW,
     PENDING_REMOVE,
@@ -27,15 +29,32 @@ from ...models import (
     Slot,
     Station,
 )
+from ...staffing import season_of, spread
 from ..pending import (
     FIELD_NAMES,
+    Conflict,
+    SeatView,
     conflict_of,
     edit_entry,
+    effective_seats,
     encode_slot,
     entry_for_seats,
+    staged_seats,
     team_entries,
 )
-from ..slot_ops import day_label, parse_clock, slot_basis, slot_label, slot_order, team_slots
+from ..slot_ops import (
+    day_label,
+    owner_fields,
+    owner_name,
+    parse_clock,
+    plan_shift_notices,
+    plan_swap_cancellations,
+    shift_label,
+    slot_basis,
+    slot_label,
+    slot_order,
+    team_slots,
+)
 from .base import Action, Plan, ValidationError, parse_input, register
 
 # station_id is an int, so a blank cell ("back to the live station") can't be
@@ -74,6 +93,11 @@ class EntryInput:
 @dataclass
 class DiscardInput:
     confirm: bool
+
+
+@dataclass
+class PublishInput:
+    notify: bool = True
 
 
 def _same(name: str, a, b) -> bool:
@@ -513,6 +537,305 @@ class DiscardPending(_Pending):
         def write(s):
             s.query(PendingPass).filter(PendingPass.team_id == team_id).delete()
         plan.writes.append(write)
+        return plan
+
+_OPS = {PENDING_EDIT: "update", PENDING_NEW: "add", PENDING_REMOVE: "delete"}
+_CONFLICT_LABELS = {
+    "date": "datum", "start_time": "tid", "end_time": "tid",
+    "station_id": "plats", "note": "anteckning",
+}
+
+
+def _conflict_text(conflict: Conflict, entry: PendingPass, live: dict[int, Slot]) -> str:
+    parts = list(dict.fromkeys(_CONFLICT_LABELS[name] for name in conflict.fields))
+    if conflict.seat_ids:
+        parts.append("spelare")
+    if conflict.missing:
+        gone = any(s["slot_id"] is not None and s["slot_id"] not in live for s in entry.seats)
+        parts.append("passet finns inte längre" if gone else "spelaren finns inte längre i laget")
+    return "Ändrat sedan det lades in: " + ", ".join(parts)
+
+
+def _quoted(note: str | None) -> str:
+    return f"'{note}'" if note else "ingen"
+
+
+def _new_detail(session, entry: PendingPass) -> str:
+    count = len(entry.seats)
+    names = [_owner(session, s["to"]) for s in entry.seats if s["to"] is not None]
+    detail = f"{count} {'plats' if count == 1 else 'platser'}"
+    return f"{detail}; {', '.join(names)}" if names else detail
+
+
+def _edit_detail(session, entry: PendingPass, live: dict[int, Slot], after: SeatView) -> str:
+    """What changes on the Pass, in the words Granska has always used."""
+    before = next((live[s["slot_id"]] for s in entry.seats if s["slot_id"] in live), None)
+    if before is None:
+        return ""
+    parts: list[str] = []
+    if "date" in entry.fields:
+        parts.append(
+            f"datum satt: {day_label(after.date)}" if before.date is None
+            else f"datum {day_label(before.date)} → {day_label(after.date)}"
+        )
+    if "start_time" in entry.fields or "end_time" in entry.fields:
+        parts.append(
+            f"tid {before.start_time:%H:%M}–{before.end_time:%H:%M}"
+            f" → {after.start_time:%H:%M}–{after.end_time:%H:%M}"
+        )
+    if "station_id" in entry.fields:
+        parts.append(f"station {before.station or 'ingen'} → {after.station or 'ingen'}")
+    if "note" in entry.fields:
+        parts.append(f"anteckning: {_quoted(before.note)} → {_quoted(after.note)}")
+    for seat in entry.seats:
+        slot = live.get(seat["slot_id"])
+        if slot is not None and seat["to"] != seat["from"]:
+            parts.append(f"{owner_name(slot)} → {_owner(session, seat['to'])}")
+    return "; ".join(parts)
+
+
+def _seat_changes(entry: PendingPass, seat: dict, slot: Slot, after: SeatView, players) -> dict:
+    """The Slot columns one edited seat gets, decoded for the live row."""
+    changes: dict = {}
+    for name in entry.fields:
+        if name == "station_id":
+            changes.update(station_id=after.station_id, station=after.station, venue=after.venue)
+        else:
+            changes[name] = getattr(after, name)
+    if seat["to"] != seat["from"]:
+        changes.update(owner_fields(slot, players[seat["to"]] if seat["to"] is not None else None))
+    return changes
+
+
+def _double_bookings(seats: list[SeatView], touched: set[int], players) -> list[str]:
+    """One warning per player and day where a staged seat meets another Pass."""
+    by_day: defaultdict = defaultdict(list)
+    for seat in seats:
+        # A live seat can outlast its player's place on the team.
+        if seat.player_id in players and seat.date is not None:
+            by_day[(seat.player_id, seat.date)].append(seat)
+    found = []
+    for (player_id, when), group in by_day.items():
+        if {s.ref for s in group} & touched and len({shift_key(s) for s in group}) > 1:
+            found.append((when, players[player_id].name))
+    return [f"{name} har redan ett pass {day_label(when)}." for when, name in sorted(found)]
+
+
+def _overlaps(heads: list[tuple[int, SeatView]], seats: list[SeatView]) -> list[str]:
+    """Seats, staged ones included, that a new Pass shares its place and time with."""
+    labels = {
+        shift_label(seat.date, seat.start_time, seat.end_time, seat.duty_name, seat.station)
+        for entry_id, head in heads
+        for seat in seats
+        if head.date is not None and head.station_id is not None
+        and seat.entry_id != entry_id and seat.date == head.date
+        and seat.station_id == head.station_id
+        and seat.start_time < head.end_time and head.start_time < seat.end_time
+    }
+    return [f"Laget har redan ett pass som överlappar: {label}" for label in sorted(labels)]
+
+
+def _staffing_notes(live, seats: list[SeatView], placed: dict[int, list], players) -> list[str]:
+    """Each newly placed player's load before and after, in the season placed in."""
+    days = [day for placements in placed.values() for day in placements if day is not None]
+    first, last = season_of(min(days) if days else date.today())
+
+    def load(rows) -> Counter:
+        return Counter(
+            row.player_id for row in rows
+            if row.player_id is not None and (row.date is None or first <= row.date <= last)
+        )
+
+    before, after = load(live.values()), load(seats)
+    gaining = [pid for pid in placed if after[pid] > before[pid]]
+    if not gaining:
+        return []
+    pool = [p.id for p in players.values() if not p.exempt and p.parents]
+    mean, width = spread(after[pid] for pid in pool)
+    mean_text = f"{mean:.1f}".replace(".", ",")
+    return [
+        *(f"{players[pid].name}: {before[pid]} → {after[pid]} pass"
+          for pid in sorted(gaining, key=lambda i: (players[i].name, i))),
+        f"Laget: i snitt {mean_text} pass per spelare, spridning {width}.",
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# AGENTS: READ THIS BEFORE CALLING pending.publish.
+#
+# Publishing changes what parents see and can send them mail. It is hugely
+# preferable that a human reviews the batch in Granska and presses Genomför.
+#
+# You may publish ONLY when you have been explicitly asked to publish AND
+# you have received approval for this specific publish. Staging changes
+# with the pending.* actions and leaving them for a person is the default.
+# ─────────────────────────────────────────────────────────────────────────
+@register
+class PublishPending(_Pending):
+    name = "pending.publish"
+    title = "Genomför väntande ändringar"
+    Input = PublishInput
+    immediate = False
+    review_template = "admin/granska_vantande.html"
+    agent_note = (
+        "Låt helst en människa granska och genomföra. Agenter får bara genomföra "
+        "på uttrycklig begäran och efter godkännande av just den här publiceringen."
+    )
+
+    def plan(self, session, ctx, inp: PublishInput) -> Plan:
+        team_id = ctx.team.id
+        entries = team_entries(session, team_id)
+        if not entries:
+            raise ValidationError({"batch": "Inget väntande att genomföra"})
+        live = {s.id: s for s in session.query(Slot).filter(Slot.team_id == team_id).order_by(Slot.id)}
+        players = {
+            p.id: p for p in session.query(Player).filter(Player.team_id == team_id).order_by(Player.id)
+        }
+        stations = {s.id: s for s in session.query(Station)}
+        views = {e.id: staged_seats(e, live, stations) for e in entries}
+        conflicts = {e.id: conflict_of(e, live, set(players)) for e in entries}
+
+        def order(entry: PendingPass) -> tuple:
+            # slot_order on the Pass as it will be, so a move sorts under its new day.
+            head = next(iter(views[entry.id]), None)
+            if head is None:
+                return (True, date.min, time.min, entry.id)
+            return (head.date is None, head.date or date.min, head.start_time, entry.id)
+
+        entries.sort(key=order)
+
+        plan = Plan(notify=inp.notify)
+        edits: list[tuple[int, dict]] = []
+        changed: list[int] = []
+        removed: list[int] = []
+        additions: list[dict] = []
+        published: list[int] = []
+        # Staged owners and dates, by SeatView.ref: what a double booking can be new about.
+        touched: set[int] = set()
+        new_heads: list[tuple[int, SeatView]] = []
+        # Who gets a seat, and on which days.
+        placed: dict[int, list] = {}
+        held_back = 0
+
+        def preview(*days) -> None:
+            for day in days:
+                if day is None:
+                    plan.preview_undated = True
+                else:
+                    plan.preview_dates.add(day)
+
+        for entry in entries:
+            plan.basis.append(_entry_basis(entry))
+            plan.basis.extend(slot_basis(live[s["slot_id"]]) for s in entry.seats if s["slot_id"] in live)
+            seats = views[entry.id]
+            head = next(iter(seats), None)
+            conflict = conflicts[entry.id]
+            op = _OPS[entry.kind]
+            review = {
+                "entry_id": entry.id,
+                "day": day_label(head.date) if head is not None and head.date is not None else None,
+                "op": op,
+                "summary": (
+                    shift_label(head.date, head.start_time, head.end_time, head.duty_name, head.station)
+                    if head is not None else "Pass som inte längre finns"
+                ),
+                "detail": "",
+                "conflict": None,
+                "missing": False,
+                "drawn": any(s["drawn"] for s in entry.seats),
+            }
+            plan.review.append(review)
+
+            if head is not None:
+                if entry.kind == PENDING_NEW:
+                    review["detail"] = _new_detail(session, entry)
+                elif entry.kind == PENDING_EDIT:
+                    review["detail"] = _edit_detail(session, entry, live, head)
+                else:
+                    review["detail"] = ", ".join(owner_name(live[s.slot_id]) for s in seats)
+
+            if conflict is not None or head is None:
+                held_back += 1
+                review["missing"] = conflict is None or conflict.missing
+                review["conflict"] = (
+                    _conflict_text(conflict, entry, live) if conflict is not None
+                    else "Ändrat sedan det lades in: passet finns inte längre"
+                )
+                continue
+
+            plan.add(op, "shift", review["summary"], review["detail"])
+            published.append(entry.id)
+
+            if entry.kind == PENDING_NEW:
+                new_heads.append((entry.id, head))
+                preview(head.date)
+                for seat, view in zip(entry.seats, seats):
+                    player = players[seat["to"]] if seat["to"] is not None else None
+                    if player is not None:
+                        touched.add(view.ref)
+                        placed.setdefault(player.id, []).append(head.date)
+                    additions.append({
+                        "team_id": team_id, "date": head.date, "start_time": head.start_time,
+                        "end_time": head.end_time, "station": head.station, "venue": head.venue,
+                        "duty_name": head.duty_name, "station_id": head.station_id, "note": head.note,
+                        "player_id": player.id if player else None,
+                        "child_name": player.name if player else None,
+                        "origin": ORIGIN_ADMIN,
+                    })
+                continue
+
+            if entry.kind == PENDING_REMOVE:
+                for view in seats:
+                    removed.append(view.slot_id)
+                    preview(view.date)
+                continue
+
+            by_slot = {view.slot_id: view for view in seats}
+            for seat in entry.seats:
+                slot, after = live[seat["slot_id"]], by_slot[seat["slot_id"]]
+                changes = _seat_changes(entry, seat, slot, after, players)
+                if not changes:
+                    continue
+                edits.append((slot.id, changes))
+                preview(slot.date, after.date)
+                # A note alone doesn't move a shift or cancel its swaps.
+                if set(changes) - {"note"}:
+                    changed.append(slot.id)
+                if seat["to"] != seat["from"] and seat["to"] is not None:
+                    placed.setdefault(seat["to"], []).append(after.date)
+                if "date" in changes or "player_id" in changes:
+                    touched.add(after.ref)
+
+        if held_back:
+            plan.warnings.append(f"{held_back} pass behöver ses över och följer inte med.")
+
+        # Conflicted entries stay väntande, so everything below counts them as live.
+        effective = effective_seats(session, team_id, skip_conflicted=True)
+        plan.warnings.extend(_double_bookings(effective, touched, players))
+        plan.warnings.extend(
+            f"{players[pid].name} är undantagen (ledarfamilj)."
+            for pid in sorted(placed, key=lambda i: (players[i].name, i)) if players[pid].exempt
+        )
+        plan.warnings.extend(_overlaps(new_heads, effective))
+        plan.notes.extend(_staffing_notes(live, effective, placed, players))
+
+        mailed = plan_shift_notices(session, plan, [(live[i], changes) for i, changes in edits])
+        plan_swap_cancellations(session, plan, changed=changed, deleted=removed, mailed=mailed)
+
+        def write(s):
+            for slot_id, changes in edits:
+                slot = s.get(Slot, slot_id)
+                for name, value in changes.items():
+                    setattr(slot, name, value)
+            for slot_id in removed:
+                s.delete(s.get(Slot, slot_id))
+            for values in additions:
+                s.add(Slot(**values))
+            for entry_id in published:
+                s.delete(s.get(PendingPass, entry_id))
+
+        if published:
+            plan.writes.append(write)
         return plan
 
 

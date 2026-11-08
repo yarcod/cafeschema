@@ -1,0 +1,61 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Granska väntande ändringar{% endblock %}
+{% block content %}
+{% set signs = {"add": "+", "update": "~", "delete": "−"} %}
+{% macro entry_form(name, entry_id, label) %}
+<form method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=name) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="entry_id" value="{{ entry_id }}">
+  <input type="hidden" name="next" value="granska">
+  {% if not plan.notify %}<input type="hidden" name="tyst" value="1">{% endif %}
+  <button type="submit" class="btn btn-sm">{{ label }}</button>
+</form>
+{% endmacro %}
+<div class="section-head"><h2>Granska väntande ändringar</h2></div>
+<div class="granska {{ 'with-phone' if phone }}">
+<div class="granska-diff">
+{% set counts = plan.public()["counts"] %}
+<div class="diff-sum">
+  {% if counts.add %}<span class="add">+ {{ counts.add }} nya</span>{% endif %}
+  {% if counts.update %}<span class="update">~ {{ counts.update }} ändrade</span>{% endif %}
+  {% if counts.delete %}<span class="delete">− {{ counts.delete }} borttagna</span>{% endif %}
+</div>
+{% include "admin/_plan_notes.html" %}
+{% for day in plan.review|map(attribute="day")|unique %}
+<h3 class="diff-day">{{ day or "Datum ej satt" }}</h3>
+<ul class="diff">
+  {% for entry in plan.review if entry.day == day %}
+  <li class="diff-row with-actions {{ entry.op }} {{ 'conflicted' if entry.conflict }}">
+    <span class="sign">{{ signs[entry.op] }}</span>
+    <span class="what">{{ entry.summary }}{% if entry.detail %}<span class="sub">{{ entry.detail }}</span>{% endif %}{% if entry.conflict %}<span class="conflict">{{ entry.conflict }}</span>{% endif %}</span>
+    <span class="diff-actions">
+      {% if entry.conflict and not entry.missing %}{{ entry_form("pending.keep", entry.entry_id, "Behåll min ändring") }}{% endif %}
+      {{ entry_form("pending.undo", entry.entry_id, "Ångra") }}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% if plan.changes %}
+<form method="post" action="{{ url_for('admin.genomfor', slug=ctx.team.slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="plan_token" value="{{ plan_token }}">
+  <button type="submit" class="btn btn-primary btn-block">Genomför {{ plan.changes|length }} {{ "ändring" if plan.changes|length == 1 else "ändringar" }}</button>
+</form>
+{% else %}
+<p class="empty-state">Inget kan genomföras än. Se över passen ovan.</p>
+{% endif %}
+<div class="inline-form">
+  <a class="btn btn-sm" href="{{ url_for('admin.pass_tab', slug=ctx.team.slug) }}">Tillbaka och ändra</a>
+  <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='pending.discard') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit" class="btn btn-sm">Släng alla väntande</button>
+  </form>
+</div>
+</div>
+{% if phone %}
+<aside class="phone" aria-label="Så ser föräldrarna det">{{ phone }}</aside>
+{% endif %}
+</div>
+{% endblock %}

@@ -107,6 +107,7 @@ def discovery():
                 "scope": action.scope,
                 "fields": fields_schema(action.Input),
                 "uploads": list(action.uploads),
+                "agent_note": action.agent_note,
             }
             for name, action in sorted(REGISTRY.items())
         },

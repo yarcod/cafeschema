@@ -37,7 +37,7 @@ def test_discovery_lists_my_teams_and_the_actions(client, echo, api_keys):
 
     assert body["teams"] == ["f14-bla"]
     assert body["actions"]["tests.echo"] == {
-        "title": "Eko", "scope": "team", "uploads": [],
+        "title": "Eko", "scope": "team", "uploads": [], "agent_note": "",
         "fields": {"text": "string", "count": "integer?"},
     }
 

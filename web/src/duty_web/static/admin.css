@@ -62,6 +62,11 @@ body.admin-body { padding-block: 24px; }
 .diff-row.delete .sign { background: var(--danger-soft); color: var(--danger); }
 .diff-row .what { display: flex; flex-direction: column; gap: 2px; }
 .diff-row .sub { font-size: 11px; color: var(--ink-dim); }
+.diff-row.with-actions { grid-template-columns: 22px minmax(0, 1fr) auto; }
+.diff-row.conflicted { border-color: var(--warm); }
+.diff-row .conflict { font-size: 11px; font-weight: 700; color: var(--warm); }
+.diff-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.diff-day { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); margin: 6px 0 0; }
 
 @media (max-width: 640px) {
   .bench { margin-inline: 0; border-radius: 0; border-inline: none; }
