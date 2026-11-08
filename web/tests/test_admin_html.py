@@ -193,18 +193,30 @@ def test_granska_answers_replan_the_reviewed_input(client, admins, echo, csrf_to
     assert "b 0" in response.get_data(as_text=True)
 
 
-def test_slumpa_om_replans(client, admins, echo, csrf_token):
+def test_the_old_granska_has_no_slumpa_om(client, admins, echo, csrf_token):
     login(client, admins["ansvarig"])
-    first = client.post(
+
+    page = client.post(
         "/admin/f14-bla/do/tests.echo", data={"csrf_token": csrf_token(), "text": "a"}
     ).get_data(as_text=True)
-    assert "Slumpa om" in first
 
-    page = client.post("/admin/f14-bla/omplanera", data={
-        "csrf_token": csrf_token(), "plan_token": _token(first), "reshuffle": "1",
-    }).get_data(as_text=True)
+    assert "Slumpa om" not in page
 
-    assert "a 1" in page
+
+def test_the_old_granska_counts_updates_and_never_a_method(client, admins, echo, csrf_token, monkeypatch):
+    from duty_web.admin.actions.base import Plan
+
+    def updates(self, session, ctx, inp):
+        plan = Plan()
+        plan.add("update", "venue", "Ett namn")
+        return plan
+
+    monkeypatch.setattr(type(echo), "plan", updates)
+    login(client, admins["ansvarig"])
+
+    page = _review(client, csrf_token).get_data(as_text=True)
+
+    assert "~ 1 ändrade" in page and "built-in method" not in page
 
 
 def test_an_error_without_a_field_still_shows(client, admins, echo, csrf_token, monkeypatch):

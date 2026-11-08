@@ -6,6 +6,7 @@ import pytest
 
 from duty_web.admin.actions import REGISTRY
 from duty_web.admin.actions.base import ValidationError
+from duty_web.admin.actions.slots_pattern import _weekends
 from duty_web.admin.executor import apply_plan, dry_run
 from duty_web.admin.permissions import admin_context
 from duty_web.models import PendingPass, Person, Slot
@@ -129,7 +130,8 @@ def test_the_form_offers_weekends_and_the_default_cafe(client, admins, session_f
 
     page = client.get(f"/admin/f14-bla/do/slots.from_pattern?date_from={FRI}&date_to={SUN}").get_data(as_text=True)
 
-    assert "Nästa helg" in page and "v 4" in page
+    assert "Nästa helg" in page
+    assert all(label in page for label, _, _ in _weekends(date.today()))
     assert f'<option value="{arena_b}" selected' in page
     assert "Lägg till 11 pass som väntande" in page and 'name="row-10-start"' in page
 

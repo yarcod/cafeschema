@@ -42,6 +42,7 @@ from ..pending import (
     encode_slot,
     entry_for_seats,
     events_of,
+    page_seats,
     staged_seats,
     team_entries,
 )
@@ -391,8 +392,10 @@ class EditPending(_Pending):
         start, end = effective("start_time"), effective("end_time")
         if start and end and time.fromisoformat(end) <= time.fromisoformat(start):
             raise ValidationError({"end": "Sluttiden måste vara efter starttiden"})
-        owners = [s["to"] for s in seats if s["to"] is not None]
-        if len(owners) != len(set(owners)):
+        # Only a seat changing hands can be new: a Pass that already lists
+        # someone twice must still be movable.
+        owners = Counter(s["to"] for s in seats if s["to"] is not None)
+        if any(owners[s["to"]] > 1 for s in seats if s["to"] is not None and s["to"] != s["from"]):
             raise ValidationError({"seats": "Spelaren står redan på passet"})
 
 
@@ -556,6 +559,11 @@ class DrawPending(_Pending):
     name = "pending.draw"
     title = "Slumpa lediga platser"
     Input = DrawInput
+    agent_note = (
+        "Slumpar ett evenemangs lediga platser som väntande. event är \"Aktivitet|ÅÅÅÅ-MM-DD\" med "
+        "första dagen, eller \"Aktivitet|\" för odaterade pass. GET /admin/api/pending?team=<slug> "
+        "listar evenemangens nycklar och det som väntar."
+    )
 
     def parse(self, fields: Mapping, files) -> DrawInput:
         inp = parse_input(self.Input, fields)
@@ -575,7 +583,8 @@ class DrawPending(_Pending):
         }
         # A conflicted entry waits for the ansvarig, so nothing is drawn onto it.
         held_back = {
-            seat["slot_id"] for e in entries if conflict_of(e, live, set(players)) for seat in e.seats
+            seat["slot_id"] for e in entries if conflict_of(e, live, set(players))
+            for seat in e.seats if seat["slot_id"] is not None
         }
         everything = effective_seats(session, team_id, skip_conflicted=True)
         today = date.today()
@@ -583,17 +592,19 @@ class DrawPending(_Pending):
         def drawable(seats):
             return [s for s in seats if s.slot_id not in held_back and (s.date is None or s.date >= today)]
 
-        # Events as the Pass page shows them (past days hidden); one with
-        # only past days left is found from the whole schedule.
-        scope = events_of(drawable(everything))
-        if inp.event is not None and inp.event not in scope:
-            scope = {k: drawable(v) for k, v in events_of(everything).items()}
+        # Events as the Pass page shows them (past days hidden, removed Pass
+        # still holding their place); one with only past days left is found
+        # from the whole schedule. Only seats still in `everything` are drawn.
+        chosen = drawable(everything)
         if inp.event is not None:
-            if inp.event not in scope:
+            shown = page_seats(session, team_id)
+            events = events_of([s for s in shown if s.date is None or s.date >= today])
+            if inp.event not in events:
+                events = events_of(shown)
+            if inp.event not in events:
                 raise ValidationError({"event": "Okänt evenemang"})
-            chosen = scope[inp.event]
-        else:
-            chosen = [s for seats in scope.values() for s in seats]
+            members = {s.ref for s in events[inp.event]}
+            chosen = [s for s in chosen if s.ref in members]
 
         if inp.redraw:
             targets = [s for s in chosen if s.drawn and s.player_id is not None]
@@ -615,12 +626,14 @@ class DrawPending(_Pending):
         plan.basis.extend(_entry_basis(e) for e in entries)
         if not by_season:
             plan.notes.append("Inga lediga platser att slumpa.")
+            plan.flash.append(("notice", "Inga lediga platser att slumpa."))
             return plan
 
         families = {p.id: frozenset(parent.id for parent in p.parents) for p in players.values()}
         current = [dataclasses.replace(s, player_id=None, drawn=False) if s.ref in cleared else s for s in everything]
         by_ref = {s.ref: s for s in everything}
         assignments: list[tuple[SeatView, int | None]] = []
+        left: Counter = Counter()
         pool = [p.id for p in players.values() if not p.exempt and p.parents]
 
         for season, seats in by_season.items():
@@ -636,6 +649,7 @@ class DrawPending(_Pending):
                 label = shift_label(view.date, view.start_time, view.end_time, view.duty_name, view.station)
                 if r.player_id is None:
                     plan.warnings.append(f"{label}: Ledigt, {r.reason}.")
+                    left[r.reason] += 1
                     if view.ref in cleared:
                         plan.add("update", "seat", f"{players[view.player_id].name} → Ledigt {label}")
                         assignments.append((view, None))
@@ -654,6 +668,7 @@ class DrawPending(_Pending):
             mean_text = f"{mean:.1f}".replace(".", ",")
             plan.notes.append(f"Laget: i snitt {mean_text} pass per spelare, spridning {width}{suffix}.")
 
+        plan.flash = _draw_summary(sum(1 for _, pid in assignments if pid is not None), left)
         plan.basis.extend(slot_basis(live[v.slot_id]) for v, _ in assignments if v.slot_id in live)
         plan.preview_dates.update(v.date for v, _ in assignments if v.date is not None)
         plan.preview_undated = any(v.date is None for v, _ in assignments)
@@ -694,6 +709,21 @@ class DrawPending(_Pending):
         if assignments:
             plan.writes.append(write)
         return plan
+
+
+def _draw_summary(filled: int, left: Counter) -> list[tuple[str, str]]:
+    """A flash for the page the draw lands on: the cookie holds it, so never a line per seat."""
+    if filled:
+        head = f"{filled} {'plats fylld' if filled == 1 else 'platser fyllda'}."
+    else:
+        head = "Inga platser fyllda."
+    return [
+        ("notice", head),
+        *(
+            ("warn", f"{n} {'plats lämnades ledig' if n == 1 else 'platser lämnades lediga'}: {reason}.")
+            for reason, n in left.most_common()
+        ),
+    ]
 
 
 def _loads(seats: list[SeatView], season: tuple[date, date]) -> Counter:

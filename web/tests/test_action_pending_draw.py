@@ -444,3 +444,103 @@ def test_an_undated_event_is_drawn_in_this_season(app, session_factory, admins, 
     assert [c.summary.startswith("Ida Ny → ") for c in plan.changes] == [True]
     (entry,) = team_entries(session_factory(), seeded["team"].id)
     assert [(s["slot_id"], s["to"]) for s in entry.seats] == [(seat, ida)]
+
+
+def _player_on(session_factory, slot_id):
+    entries = team_entries(session_factory(), session_factory().get(Slot, slot_id).team_id)
+    for entry in entries:
+        for seat in entry.seats:
+            if seat["slot_id"] == slot_id:
+                return entry.kind, seat["to"]
+    return None, None
+
+
+def test_a_removed_first_day_keeps_the_events_key(client, app, session_factory, admins, seeded, day):
+    _ida(session_factory, seeded)
+    (first,) = _seats(session_factory, seeded["team"].id, day)
+    (second,) = _seats(session_factory, seeded["team"].id, day + timedelta(days=1))
+    run_action(app, session_factory, admins["ansvarig"], "pending.remove", slot_ids=[first])
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/pass").get_data(as_text=True)
+    assert f'name="event" value="{_key(day)}"' in page
+
+    _draw(app, session_factory, admins, event=_key(day), seed=3)
+
+    kind, drawn = _player_on(session_factory, second)
+    assert kind == "edit" and drawn is not None
+    assert _player_on(session_factory, first) == ("remove", None)
+
+
+def test_a_removed_middle_day_does_not_split_the_event(app, session_factory, admins, seeded, day):
+    _ida(session_factory, seeded)
+    (first,) = _seats(session_factory, seeded["team"].id, day)
+    (middle,) = _seats(session_factory, seeded["team"].id, day + timedelta(days=1))
+    (last,) = _seats(session_factory, seeded["team"].id, day + timedelta(days=2))
+    run_action(app, session_factory, admins["ansvarig"], "pending.remove", slot_ids=[middle])
+
+    _draw(app, session_factory, admins, event=_key(day), seed=3)
+
+    assert _player_on(session_factory, first)[1] is not None
+    assert _player_on(session_factory, last)[1] is not None
+    assert _player_on(session_factory, middle) == ("remove", None)
+
+
+def test_a_conflicted_new_pass_does_not_hold_back_the_other_new_ones(app, session_factory, admins, seeded, day):
+    _ida(session_factory, seeded)
+    session = session_factory()
+    broken = new_pass(seeded["team"].id, DUTY, day, time(9), time(12), None, seats=1)
+    broken.seats = [{"slot_id": None, "from": None, "to": 999999, "drawn": False}]
+    fine = new_pass(seeded["team"].id, DUTY, day, time(13), time(16), None, seats=1)
+    session.add_all([broken, fine])
+    session.commit()
+    fine_id = fine.id
+
+    _draw(app, session_factory, admins, event=_key(day), seed=3)
+
+    (row,) = [e for e in team_entries(session_factory(), seeded["team"].id) if e.id == fine_id]
+    assert row.seats[0]["to"] is not None
+
+
+def _draw_form(client, csrf_token, **fields):
+    return client.post("/admin/f14-bla/do/pending.draw", data={"csrf_token": csrf_token(), **fields}, follow_redirects=True)
+
+
+def test_slumpa_tells_how_many_seats_were_filled(client, admins, seeded, session_factory, csrf_token, day):
+    _ida(session_factory, seeded)
+    _seats(session_factory, seeded["team"].id, day, count=2)
+    login(client, admins["ansvarig"])
+
+    page = _draw_form(client, csrf_token, event=_key(day), seed="3").get_data(as_text=True)
+
+    assert '<div class="notice">2 platser fyllda.</div>' in page
+
+
+def test_slumpa_gives_one_line_per_reason_seats_stay_empty(client, admins, seeded, session_factory, csrf_token, day):
+    _exempt(session_factory, seeded["player"].id, _neighbour(session_factory))
+    _seats(session_factory, seeded["team"].id, day, count=3)
+    login(client, admins["ansvarig"])
+
+    page = _draw_form(client, csrf_token, event=_key(day), seed="3").get_data(as_text=True)
+
+    assert page.count('class="warn-note"') == 1
+    assert "3 platser lämnades lediga: inga spelare att välja bland" in page
+    assert '<div class="notice">Inga platser fyllda.</div>' in page
+
+
+def test_slumpa_om_summary_lands_on_granska(client, app, session_factory, admins, seeded, csrf_token, day):
+    _ida(session_factory, seeded)
+    _seats(session_factory, seeded["team"].id, day)
+    _draw(app, session_factory, admins, event=_key(day), seed=3)
+    login(client, admins["ansvarig"])
+
+    page = _draw_form(client, csrf_token, redraw="1", next="granska", seed="4").get_data(as_text=True)
+
+    assert "Granska väntande ändringar" in page
+    assert '<div class="notice">1 plats fylld.</div>' in page
+
+
+def test_the_note_tells_agents_how_to_find_event_keys():
+    note = REGISTRY["pending.draw"].agent_note
+
+    assert "GET /admin/api/pending?team=" in note and "Aktivitet|ÅÅÅÅ-MM-DD" in note

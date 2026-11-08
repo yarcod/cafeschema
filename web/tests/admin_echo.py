@@ -39,11 +39,8 @@ class EchoAction(Action):
     Input = EchoInput
     template = "admin/actions/_test_echo.html"
     refinable = True
-    reshuffle = True
 
     def refine(self, inp, fields):
-        if fields.get("reshuffle"):
-            return EchoInput(text=inp.text, count=inp.count + 1)
         return EchoInput(text=fields.get("text") or inp.text, count=inp.count)
 
     def plan(self, session, ctx, inp):

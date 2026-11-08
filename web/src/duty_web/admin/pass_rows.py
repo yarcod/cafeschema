@@ -22,7 +22,7 @@ from .pending import (
     conflict_of,
     events_of,
     seat_view,
-    staged_seats,
+    shown_seats,
     team_entries,
 )
 from .permissions import AdminContext
@@ -108,12 +108,11 @@ def pass_view(session: Session, ctx: AdminContext, *, include_past: bool) -> lis
     for entry in team_entries(session, team_id):
         claimed.update(s["slot_id"] for s in entry.seats if s["slot_id"] is not None)
         flagged = conflict_of(entry, live, player_ids) is not None
+        views = shown_seats(entry, live, stations)
         if entry.kind == PENDING_REMOVE:
-            views = [seat_view(live[s["slot_id"]]) for s in entry.seats if s["slot_id"] in live]
             keys = [str(v.slot_id) for v in views]
             status, changed, staged = "remove", set(), set()
         else:
-            views = staged_seats(entry, live, stations)
             if entry.kind == PENDING_NEW:
                 keys = [f"new-{i}" for i in range(len(views))]
                 staged = {f"new-{i}" for i, s in enumerate(entry.seats) if s["to"] is not None}

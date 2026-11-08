@@ -9,6 +9,7 @@ from flask import (
     Blueprint,
     abort,
     current_app,
+    flash,
     jsonify,
     redirect,
     render_template,
@@ -198,6 +199,9 @@ def do_action(slug: str, name: str):
         plan, token = dry_run(session, ctx, action, inp, secret_key=key)
         if action.immediate:
             apply_plan(session, ctx, token, secret_key=key, via="webb")
+            if not autosave:
+                for category, text in plan.flash:
+                    flash(text, category)
             return _staged_response(session, ctx, inp, autosave)
     except ValidationError as exc:
         if autosave:
@@ -270,7 +274,7 @@ def genomfor(slug: str):
 @admin_bp.route("/<slug>/omplanera", methods=["POST"])
 @login_required
 def omplanera(slug: str):
-    """Granska's answers, Slumpa om, or the mail box: re-plan the reviewed input with them."""
+    """Granska's answers or the mail box: re-plan the reviewed input with them."""
     ctx = _context(slug)
     _throttle()
     session = _session()

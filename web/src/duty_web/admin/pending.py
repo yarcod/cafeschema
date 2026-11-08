@@ -171,6 +171,25 @@ def staged_seats(entry, live: dict[int, Slot], stations: dict[int, Station]) -> 
     return out
 
 
+def shown_seats(entry, live: dict[int, Slot], stations: dict[int, Station]) -> list[SeatView]:
+    """The entry's seats as the Pass page shows them: a removed Pass stays, as it stands live."""
+    if entry.kind == PENDING_REMOVE:
+        return [seat_view(live[s["slot_id"]]) for s in entry.seats if s["slot_id"] in live]
+    return staged_seats(entry, live, stations)
+
+
+def page_seats(session: Session, team_id: int) -> list[SeatView]:
+    """Every seat the Pass page has a row for, so the draw reads events as the page does."""
+    live = {s.id: s for s in session.query(Slot).filter(Slot.team_id == team_id)}
+    stations = {s.id: s for s in session.query(Station)}
+    shown: list[SeatView] = []
+    claimed: set[int] = set()
+    for entry in team_entries(session, team_id):
+        claimed.update(s["slot_id"] for s in entry.seats if s["slot_id"] is not None)
+        shown.extend(shown_seats(entry, live, stations))
+    return shown + [seat_view(slot) for slot_id, slot in live.items() if slot_id not in claimed]
+
+
 def effective_seats(session: Session, team_id: int, *, skip_conflicted: bool = False) -> list[SeatView]:
     """The team's seats as they would be once every staged change is published."""
     live = {s.id: s for s in session.query(Slot).filter(Slot.team_id == team_id)}

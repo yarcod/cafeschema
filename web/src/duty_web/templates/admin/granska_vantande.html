@@ -11,14 +11,15 @@
   <button type="submit" class="btn btn-sm">{{ label }}</button>
 </form>
 {% endmacro %}
+{% include "admin/_flashes.html" %}
 <div class="section-head"><h2>Granska väntande ändringar</h2></div>
 <div class="granska {{ 'with-phone' if phone }}">
 <div class="granska-diff">
 {% set counts = plan.public()["counts"] %}
 <div class="diff-sum">
-  {% if counts.add %}<span class="add">+ {{ counts.add }} nya</span>{% endif %}
-  {% if counts.update %}<span class="update">~ {{ counts.update }} ändrade</span>{% endif %}
-  {% if counts.delete %}<span class="delete">− {{ counts.delete }} borttagna</span>{% endif %}
+  {% if counts['add'] %}<span class="add">+ {{ counts['add'] }} nya</span>{% endif %}
+  {% if counts['update'] %}<span class="update">~ {{ counts['update'] }} ändrade</span>{% endif %}
+  {% if counts['delete'] %}<span class="delete">− {{ counts['delete'] }} borttagna</span>{% endif %}
 </div>
 {% include "admin/_plan_notes.html" %}
 {% for day in plan.review|map(attribute="day")|unique %}
@@ -56,11 +57,14 @@
     <button type="submit" class="btn btn-sm">Slumpa om</button>
   </form>
   {% endif %}
-  <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='pending.discard') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="confirm" value="1">
-    <button type="submit" class="btn btn-sm">Släng alla väntande</button>
-  </form>
+  <details class="confirm-discard">
+    <summary class="btn btn-sm">Släng alla väntande</summary>
+    <form class="inline-form" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name='pending.discard') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="confirm" value="1">
+      <button type="submit" class="btn btn-sm">Ja, släng alla {{ plan.review|length }}</button>
+    </form>
+  </details>
 </div>
 </div>
 {% if phone %}

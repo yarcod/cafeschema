@@ -325,3 +325,50 @@ def test_other_actions_still_use_the_form_limit(client, admins, csrf_token, monk
     login(client, admins["ansvarig"])
     r = client.post("/admin/f14-bla/do/venue.create", data={"csrf_token": csrf_token(), "name": "X"})
     assert r.status_code == 429
+
+
+def test_autosave_takes_both_times_where_one_alone_is_refused(client, admins, csrf_token, two_seats, session_factory):
+    login(client, admins["ansvarig"])
+    post = {"csrf_token": csrf_token(), "slot_ids": [two_seats["a"]]}
+
+    alone = client.post("/admin/f14-bla/do/pending.edit", headers={"X-Autosave": "1"}, data={**post, "start": "22:00"})
+    both = client.post("/admin/f14-bla/do/pending.edit", headers={"X-Autosave": "1"},
+                       data={**post, "start": "22:00", "end": "23:00"})
+
+    assert alone.status_code == 400
+    assert both.status_code == 200
+    (entry,) = team_entries(session_factory(), two_seats["team"])
+    assert entry.fields["start_time"]["to"] == "22:00" and entry.fields["end_time"]["to"] == "23:00"
+
+
+def test_a_row_post_without_javascript_handles_both_times_together(client, admins, csrf_token, two_seats, session_factory):
+    login(client, admins["ansvarig"])
+
+    response = client.post("/admin/f14-bla/do/pending.edit", data={
+        "csrf_token": csrf_token(), "slot_ids": [two_seats["a"], two_seats["b"]], "day": "",
+        "start": "22:00", "end": "23:00", "station_id": "", "note": "",
+        f"seat-{two_seats['a']}": str(session_factory().get(Slot, two_seats["a"]).player_id),
+        f"seat-{two_seats['b']}": str(two_seats["ida"]),
+    })
+
+    assert response.status_code == 302
+    (entry,) = team_entries(session_factory(), two_seats["team"])
+    assert entry.fields["end_time"]["to"] == "23:00"
+
+
+def test_a_pass_already_listing_a_player_twice_can_still_be_moved(app, session_factory, admins, two_seats):
+    session = session_factory()
+    session.get(Slot, two_seats["b"]).player_id = session.get(Slot, two_seats["a"]).player_id
+    session.commit()
+
+    _edit(app, session_factory, admins, slot_ids=[two_seats["a"]], day="2031-03-08")
+
+    (entry,) = team_entries(session_factory(), two_seats["team"])
+    assert entry.fields["date"]["to"] == "2031-03-08"
+
+
+def test_a_player_cannot_be_put_on_a_seat_beside_themselves(app, session_factory, admins, two_seats):
+    b = str(two_seats["b"])
+    with pytest.raises(ValidationError) as caught:
+        _edit(app, session_factory, admins, slot_ids=[two_seats["a"]], seats={b: str(session_factory().get(Slot, two_seats["a"]).player_id)})
+    assert caught.value.errors == {"seats": "Spelaren står redan på passet"}

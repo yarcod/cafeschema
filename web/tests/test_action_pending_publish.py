@@ -717,3 +717,27 @@ def test_the_source_warns_agents():
     source = Path(pending_actions.__file__).read_text(encoding="utf-8")
 
     assert "AGENTS: READ THIS BEFORE CALLING pending.publish" in source
+
+
+def test_granska_counts_edits_and_never_a_method(client, app, session_factory, seeded, admins):
+    _stage(app, session_factory, admins, slot_ids=[seeded["future_slot"].id], note="Ny")
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/granska").get_data(as_text=True)
+
+    assert "~ 1 ändrade" in page and "built-in method" not in page
+
+
+def test_slanga_allt_asks_a_second_time_without_javascript(client, app, session_factory, seeded, admins):
+    a = _seat(session_factory, seeded, day=date(2031, 3, 1))
+    b = _seat(session_factory, seeded, day=date(2031, 3, 8))
+    for slot_id in (a, b):
+        _stage(app, session_factory, admins, slot_ids=[slot_id], note="Ny")
+    login(client, admins["ansvarig"])
+
+    page = client.get("/admin/f14-bla/granska").get_data(as_text=True)
+
+    tail = page[page.index("<details"):page.index("</details>")]
+    assert "<summary" in tail and "Släng alla väntande" in tail
+    assert "Ja, släng alla 2" in tail and 'name="confirm"' in tail
+    assert "confirm(" not in page
