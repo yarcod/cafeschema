@@ -56,18 +56,28 @@ rubriken i listan — `Kiosk_instruktioner.pdf` visas som "Kiosk instruktioner".
 Ansvariga i ett lag och klubbadmin ser en **✎** bredvid ⚙. Den leder till
 arbetsbänken på `/admin/<lag>/`:
 
-- **Pass**: lagets pass plats för plats, och där man börjar. **+ Lägg till pass**
-  för en cup eller ett enstaka pass: välj dagar (eller *Den här helgen*), skriv
-  aktiviteten och upp till fyra rader med tid, station och antal platser.
-  Bocka i lediga platser och tryck **Bemanna valda platser**: den med minst
-  pass den här säsongen går först, syskon hamnar gärna på samma pass, och
-  slumpen avgör bara mellan lika. Ingen familj får två pass samma dag eller
-  helg (fredag till söndag), eller ett pass samtidigt som ett eget pass i ett
-  annat lag. Räcker inte familjerna blir platsen ledig och granskningen säger
-  varför. Ledarnas barn får aldrig pass. **Ändra** och
-  **Ta bort** gäller ett pass i taget. Flyttar du ett pass med datum till en
-  annan dag, tid eller station får familjen ett mejl; granskningen säger vilka. **Importera Excel** tar coachens fil
-  som den är (se nedan).
+- **Pass**: lagets pass som en tabell, ett pass per rad, grupperade per
+  evenemang och dag, och där man börjar. Datum, tid, plats, spelare och
+  anteckning ändras direkt i raden och sparas när du lämnar fältet (utan
+  JavaScript finns en spara-knapp). Plats väljs alltid ur stationerna. En ändring
+  är **väntande**: den syns bara här, inga föräldrar ser den och ingen får mejl
+  förrän du trycker **Genomför** i Granska. Raden visar vad som ändrats, **Ångra**
+  tar tillbaka en rad och **Ta bort** markerar ett pass för borttagning.
+  **+ Lägg till pass** för en cup eller ett enstaka pass: välj dagar (eller *Den
+  här helgen*), skriv aktiviteten och upp till fyra rader med tid, station och
+  antal platser. **+ Lägg till cafépass** skapar en hel cafépass-helg i ett steg.
+  Båda läggs till som väntande rader. **Importera Excel** tar coachens fil som
+  den är (se nedan).
+  **Slumpa lediga** står på varje evenemang och fyller bara det evenemangets
+  lediga platser, som väntande: den med minst pass den här säsongen går först,
+  syskon hamnar gärna på samma pass, och slumpen avgör bara mellan lika. Ingen
+  familj får två pass samma dag eller helg (fredag till söndag), eller ett pass
+  samtidigt som ett eget pass i ett annat lag. Räcker inte familjerna blir platsen
+  ledig och granskningen säger varför. Ledarnas barn får aldrig pass. Namn du
+  satt för hand stannar kvar när du trycker **Slumpa om** i Granska.
+  Flyttar du ett pass med datum till en annan dag, tid eller station får
+  familjen ett mejl när du genomför; granskningen säger vilka. Ingen mejlas för
+  att ha fått ett pass eller för ett pass som får sitt första datum.
 - **Lag & ansvariga**: laglistan från 360Player, ledarna och vilka som är
   ansvariga. Varje ansvarig kan göra en annan förälder i laget till ansvarig.
   Bara klubbadmin kan ta bort lagets sista ansvariga.
@@ -77,8 +87,10 @@ arbetsbänken på `/admin/<lag>/`:
   ligger direkt i `DOCUMENTS_DIR`, kan kopplas till en station. En fil med
   samma namn i lagets mapp går före den delade för just det laget.
 
-Allt som ändrar något visas först i **Granska** (+ nytt, ~ ändrat, − borttaget).
-Ingenting händer förrän du trycker **Genomför**.
+Allt väntande samlas i en enda **Granska** (+ nytt, ~ ändrat, − borttaget), som
+öppnas från fältet längst ned på Pass. **Släng alla väntande** tömmer listan.
+Ingenting händer förrän du trycker **Genomför**. Övriga åtgärder, som
+Importera Excel och Lag & ansvariga, har sin egen Granska.
 
 Flyttar ändringen pass med datum finns rutan **Skicka inga mejl om flyttade
 pass** i granskningen. Bra medan schemat fortfarande flyttas runt: ändringarna
@@ -94,7 +106,7 @@ Rutan är urbockad varje gång, så nästa ändring mejlar som vanligt.
 Spelare läses bara från spelarrader. Ledare känns igen automatiskt: i exporten
 står en ledare en gång till, utan barn och utan föräldrar, med samma e-post som
 när hen står som förälder. Ledarnas barn markeras som undantagna och får
-aldrig pass när du bemannar. Står de i coachens Excel varnar granskningen. Är
+aldrig pass när du slumpar. Står de i coachens Excel varnar granskningen. Är
 någon felaktigt ledare rättas det i 360Player, inte här. Den som redan finns i ett annat lag
 kopplas till det här laget men byter aldrig namn. Ingen tas bort av en import:
 den som saknas i filen listas som en varning. Telefonnummer läses aldrig in.
@@ -151,7 +163,8 @@ och maskas i åtkomstloggen:
 curl -H "Authorization: Bearer $NYCKEL" https://innebandy.edholm.cc/admin/api
 ```
 
-`GET /admin/api` listar dina lag och alla åtgärder med fält. Varje åtgärd
+`GET /admin/api` listar dina lag, alla åtgärder med fält och `patterns`
+(mönstren för cafépass). Varje åtgärd
 körs två gånger: först `"dry_run": true`, som ger exakt Granska-listan och en
 `plan_token`. Sedan `"dry_run": false` med samma `plan_token`, som genomför
 just det som granskades. Har något ändrats emellan blir svaret `409` och du
@@ -172,8 +185,16 @@ terminalen: svara i webben.
 
 Läsning: `GET /admin/api/slots?team=f15` (valfritt `from`/`to`),
 `GET /admin/api/roster?team=f15`, `GET /admin/api/venues`, `GET /admin/api/documents`.
-Bemanna kräver inget `seed`: utelämnat väljs ett, och `plan_token` bär det, så
-det som genomförs är det som granskades.
+
+Ändringar av pass stages med `pending.*` (`pending.edit`, `pending.remove`,
+`pending.undo`, `pending.keep`, `pending.discard`, `pending.draw`), och
+`slots.create` och `slots.from_pattern` stages också: inget når föräldrar eller
+mejl förrän någon genomför. `pending.draw` kräver inget `seed`: utelämnat väljs
+ett, och `plan_token` bär det, så det som genomförs är det som granskades.
+`pending.publish` är för en människa som standard: en agent får bara genomföra
+när den uttryckligen blivit ombedd och har fått godkänt för just det
+genomförandet. `scripts/admin_push.py` driver bara `roster.import` och
+`schedule.import`.
 
 ### Migrering
 
