@@ -18,7 +18,7 @@ from flask import request
 
 from ...agenda import shift_key
 from ...models import Player, Slot
-from ...staffing import Candidate, Seat, assign, season_of, spread
+from ...staffing import Candidate, Seat, assign, clashes, same_weekend, season_of, spread
 from ..slot_ops import day_label, owner_fields, slot_basis, slot_label, slot_order, team_slots
 from .base import Action, Plan, ValidationError, parse_input, register
 
@@ -62,6 +62,24 @@ def _locked(raw: dict, empty_ids: set[int], players: dict[int, Player]) -> dict[
             raise ValidationError({"locked": "Den låsta spelaren finns inte i laget"})
         out[slot_id] = player_id
     return out
+
+
+def _shifts_elsewhere(
+    session, team_id: int, days: set[date], families: dict[int, frozenset[int]]
+) -> dict[int, tuple]:
+    """Each player's family's shifts on other teams on these days, by shared parent."""
+    by_parent: defaultdict = defaultdict(set)
+    if days:
+        others = session.query(Slot).filter(
+            Slot.team_id != team_id, Slot.player_id.isnot(None), Slot.date.in_(days)
+        )
+        for slot in others:
+            for parent in slot.player.parents:
+                by_parent[parent.id].add((slot.date, slot.start_time, slot.end_time))
+    return {
+        player_id: tuple(shift for parent_id in family for shift in by_parent[parent_id])
+        for player_id, family in families.items()
+    }
 
 
 @register
@@ -147,14 +165,21 @@ class AssignSlots(Action):
                 held[slot.player_id].add(slot.date)
             occupied[shift_key(slot)].add(slot.player_id)
         before = dict(load)
+        families = {p.id: frozenset(parent.id for parent in p.parents) for p in players.values()}
+        elsewhere = _shifts_elsewhere(session, team_id, set(dated), families)
         for slot in empty:
             if slot.id in locked:
-                # A lock keeps the rules the draw keeps: one shift a day, and
-                # never twice on the same shift.
+                # A lock keeps the rules the draw keeps: one shift a day and a
+                # weekend, never twice on the same shift, and never at the
+                # same time as the family's shift on another team.
                 player_id = locked[slot.id]
                 name = players[player_id].name
                 if slot.date is not None and slot.date in held[player_id]:
                     raise ValidationError({"locked": f"{name} har redan ett pass {day_label(slot.date)}"})
+                if slot.date is not None and same_weekend(slot.date, held[player_id]):
+                    raise ValidationError({"locked": f"{name} har redan ett pass samma helg"})
+                if clashes(slot.date, slot.start_time, slot.end_time, elsewhere[player_id]):
+                    raise ValidationError({"locked": f"{name} har redan ett pass samtidigt i ett annat lag"})
                 if player_id in occupied[shift_key(slot)]:
                     raise ValidationError({"locked": f"{name} står redan på {slot_label(slot)}"})
                 load[player_id] += 1
@@ -162,9 +187,8 @@ class AssignSlots(Action):
                     held[player_id].add(slot.date)
                 occupied[shift_key(slot)].add(player_id)
 
-        families = {p.id: frozenset(parent.id for parent in p.parents) for p in players.values()}
         pool = [
-            Candidate(p.id, families[p.id], load[p.id], set(held[p.id]))
+            Candidate(p.id, families[p.id], load[p.id], set(held[p.id]), elsewhere[p.id])
             for p in players.values() if not p.exempt and p.parents
         ]
         free = [

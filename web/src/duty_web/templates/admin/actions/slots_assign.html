@@ -8,7 +8,7 @@
 <form class="card" method="post" action="{{ url_for('admin.do_action', slug=ctx.team.slug, name=action.name) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="seed" value="{{ seed }}">
-  <p class="hint">Den som har minst pass den här säsongen går först. Slumpen avgör bara mellan lika. Lås en plats om ni redan vet vem som tar den.</p>
+  <p class="hint">Den som har minst pass den här säsongen går först. Slumpen avgör bara mellan lika. Ingen familj får två pass samma helg, eller ett pass samtidigt som ett eget pass i ett annat lag. Lås en plats om ni redan vet vem som tar den.</p>
   {% for key in ("slot_ids", "locked") %}
     {% if errors.get(key) %}<span class="field-error">{{ errors[key] }}</span>{% endif %}
   {% endfor %}

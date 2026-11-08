@@ -7,6 +7,9 @@ import pytest
 
 from duty_web.staffing import (
     BUSY,
+    BUSY_WEEKEND,
+    CLASHES,
+    ELSEWHERE,
     NO_ONE,
     ON_SHIFT,
     Candidate,
@@ -23,8 +26,10 @@ def seat(slot_id, day=DAY, start=9, station=1):
     return Seat(slot_id, day, time(start), time(start + 3), station)
 
 
-def cand(player_id, load=0, family=None, days=()):
-    return Candidate(player_id, frozenset(family or {player_id * 100}), load, set(days))
+def cand(player_id, load=0, family=None, days=(), elsewhere=()):
+    return Candidate(
+        player_id, frozenset(family or {player_id * 100}), load, set(days), tuple(elsewhere)
+    )
 
 
 def chosen(results):
@@ -90,6 +95,111 @@ def test_two_weekends_running_is_avoided_among_equals():
             [seat(1)], [cand(1, load=1, days={last_week}), cand(2, load=1, days={long_ago})], seed=s
         )
         assert result.player_id == 2
+
+
+def test_a_shift_the_same_weekend_rules_someone_out_however_few_shifts_they_have():
+    for held, day in [(DAY, DAY + timedelta(days=1)),    # Saturday, then Sunday
+                      (DAY, DAY - timedelta(days=1))]:   # Saturday, then Friday
+        (result,) = assign([seat(1, day)], [cand(1, days={held}), cand(2, load=5)], seed=1)
+        assert result.player_id == 2
+
+
+def test_weekdays_are_not_a_weekend():
+    thursday, monday = DAY - timedelta(days=2), DAY + timedelta(days=2)
+    for held, day in [(DAY, thursday), (DAY, monday), (thursday, DAY)]:
+        (result,) = assign([seat(1, day)], [cand(1, days={held}), cand(2, load=5)], seed=1)
+        assert result.player_id == 1
+
+
+def test_the_draw_itself_keeps_a_family_to_one_shift_a_weekend():
+    results = assign([seat(1), seat(2, DAY + timedelta(days=1))], [cand(1)], seed=1)
+
+    assert chosen(results) == [1, None]
+    assert results[1].reason == BUSY_WEEKEND == "alla kvarvarande har redan pass den helgen"
+
+
+def test_a_clash_on_another_team_rules_someone_out():
+    clash = [(DAY, time(10), time(12))]
+
+    (result,) = assign([seat(1)], [cand(1, elsewhere=clash), cand(2, load=5)], seed=1)
+
+    assert result.player_id == 2
+
+
+def test_another_teams_shift_that_only_touches_this_one_is_no_clash():
+    before, after = [(DAY, time(7), time(9))], [(DAY, time(12), time(14))]
+
+    (result,) = assign([seat(1)], [cand(1, elsewhere=before + after), cand(2, load=5)], seed=1)
+
+    assert result.player_id == 1
+
+
+def test_another_teams_shift_on_another_day_is_no_clash():
+    (result,) = assign(
+        [seat(1)],
+        [cand(1, elsewhere=[(DAY + timedelta(days=1), time(9), time(12))]), cand(2, load=5)],
+        seed=1,
+    )
+
+    assert result.player_id == 1
+
+
+def test_a_seat_stays_free_saying_which_rule_stopped_it():
+    weekday = DAY + timedelta(days=3)
+    clash = [(weekday, time(9), time(12))]
+
+    (alone,) = assign([seat(1, weekday)], [cand(1, elsewhere=clash)], seed=1)
+    (mixed,) = assign(
+        [seat(1, weekday)], [cand(1, elsewhere=clash), cand(2, days={weekday})], seed=1
+    )
+
+    assert (alone.player_id, alone.reason) == (None, ELSEWHERE)
+    assert (mixed.player_id, mixed.reason) == (None, CLASHES)
+
+
+def _weekends(firsts, starts, seats_per_shift=2):
+    return [
+        Seat(n, day, time(hour), time(hour + 2), 1)
+        for n, (day, hour, _) in enumerate(
+            (first + timedelta(days=d), hour, s)
+            for first in firsts for d in (0, 1) for hour in starts for s in range(seats_per_shift)
+        )
+    ]
+
+
+def test_those_who_waited_a_weekend_all_go_first_the_next():
+    # 11 shifts of two seats a weekend, for 30 families: 8 wait each time.
+    # A Saturday with six shifts and a Sunday with five.
+    firsts = [DAY, DAY + timedelta(days=14)]
+    seats = [s for s in _weekends(firsts, range(8, 20, 2)) if s.day.weekday() == 5 or s.start.hour < 18]
+    pool = [cand(p) for p in range(1, 31)]
+    by_id = {s.slot_id: s for s in seats}
+
+    results = assign(seats, pool, seed=11)
+
+    first = {r.player_id for r in results if by_id[r.slot_id].day < firsts[1]}
+    second = {r.player_id for r in results if by_id[r.slot_id].day >= firsts[1]}
+    assert (len(first), len(second)) == (22, 22)
+    assert set(range(1, 31)) - first <= second
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_sixty_seats_over_three_weekends_are_shared_one_a_weekend(seed):
+    # F19/20's real shape: 5 shifts of two seats, Saturday and Sunday, for 23 families.
+    firsts = [date(2026, 11, 28), date(2027, 1, 23), date(2027, 4, 24)]
+    seats = _weekends(firsts, range(8, 18, 2))
+    by_id = {s.slot_id: s for s in seats}
+
+    results = assign(seats, [cand(p) for p in range(1, 24)], seed=seed)
+
+    assert all(r.player_id is not None for r in results)
+    weekends = {}
+    for result in results:
+        day = by_id[result.slot_id].day
+        weekend = day - timedelta(days=day.weekday())
+        assert weekend not in weekends.setdefault(result.player_id, set())
+        weekends[result.player_id].add(weekend)
+    assert sorted(len(held) for held in weekends.values()) == [2] * 9 + [3] * 14
 
 
 def test_the_same_seed_gives_the_same_answer_and_seeds_differ():

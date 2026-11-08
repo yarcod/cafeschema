@@ -14,8 +14,10 @@ candidate with the lowest rank goes first:
    running;
 4. chance, from random.Random(seed).
 
-A candidate who already has a shift that day, or is already on this very
-shift, isn't eligible at all.
+A candidate isn't eligible at all if they already have a shift that day or
+that weekend (Friday to Sunday), are already on this very shift, or if their
+family has a shift on another team at the same time. Families can still
+swap into such a shift themselves.
 """
 
 from __future__ import annotations
@@ -28,6 +30,9 @@ from datetime import date, time, timedelta
 NO_ONE = "inga spelare att välja bland (alla är undantagna eller saknar föräldrar)"
 BUSY = "alla kvarvarande har redan pass den dagen"
 ON_SHIFT = "alla kvarvarande står redan på passet"
+BUSY_WEEKEND = "alla kvarvarande har redan pass den helgen"
+ELSEWHERE = "alla kvarvarande har redan pass samtidigt i ett annat lag"
+CLASHES = "alla kvarvarande har redan pass den dagen, den helgen eller samtidigt i ett annat lag"
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,8 @@ class Candidate:
     family: frozenset[int]
     load: int = 0
     days: set[date] = field(default_factory=set)
+    # The family's shifts on other teams, as (day, start, end).
+    elsewhere: tuple[tuple[date, time, time], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,6 +93,46 @@ def _week_next_door(day: date, days: Iterable[date]) -> bool:
     return any(abs((_monday(other) - week).days) == 7 for other in days)
 
 
+def _weekend(day: date) -> date | None:
+    """The Monday of a Friday-to-Sunday day's week; None on other days."""
+    return _monday(day) if day.weekday() >= 4 else None
+
+
+def same_weekend(day: date, days: Iterable[date]) -> bool:
+    weekend = _weekend(day)
+    return weekend is not None and any(_weekend(other) == weekend for other in days)
+
+
+def clashes(
+    day: date | None, start: time, end: time, shifts: Iterable[tuple[date, time, time]]
+) -> bool:
+    """Whether any shift overlaps this one. Back to back is not an overlap."""
+    return day is not None and any(
+        other == day and other_start < end and start < other_end
+        for other, other_start, other_end in shifts
+    )
+
+
+def _stop(seat: Seat, candidate: Candidate, mates: set[int], days: set[date]) -> str | None:
+    """Why a candidate can't take the seat, or None if they can."""
+    if seat.day is None:
+        return ON_SHIFT if candidate.player_id in mates else None
+    if candidate.player_id in mates or seat.day in days:
+        return BUSY
+    if same_weekend(seat.day, days):
+        return BUSY_WEEKEND
+    if clashes(seat.day, seat.start, seat.end, candidate.elsewhere):
+        return ELSEWHERE
+    return None
+
+
+def _reason(stops: set[str]) -> str:
+    """One reason for an unfilled seat. Booked that day is also booked that weekend."""
+    if BUSY_WEEKEND in stops:
+        stops = stops - {BUSY}
+    return stops.pop() if len(stops) == 1 else CLASHES
+
+
 def assign(
     seats: Iterable[Seat],
     candidates: Iterable[Candidate],
@@ -110,12 +157,10 @@ def assign(
     results = []
     for seat in sorted(seats, key=lambda s: (s.day is None, s.day or date.min, s.start, s.slot_id)):
         mates = on_shift.setdefault(seat.shift, set())
-        eligible = [
-            c for c in pool
-            if c.player_id not in mates and (seat.day is None or seat.day not in held[c.player_id])
-        ]
+        stops = {c.player_id: _stop(seat, c, mates, held[c.player_id]) for c in pool}
+        eligible = [c for c in pool if stops[c.player_id] is None]
         if not eligible:
-            reason = NO_ONE if not pool else (BUSY if seat.day is not None else ON_SHIFT)
+            reason = NO_ONE if not pool else _reason({s for s in stops.values() if s})
             results.append(Filled(seat.slot_id, None, reason))
             continue
         mate_parents = frozenset().union(*(family.get(m, frozenset()) for m in mates))
